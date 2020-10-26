@@ -1,5 +1,12 @@
+#Set pd and out based on specific project
+#pd=~/projects/movebankdb/analysis/movebankdb
+pd=~/projects/covid/analysis/movebankdb
+
+#This is where csv files downloaded from movebank are staged prior to db import
+#out="/Volumes/WD4TB/projects/movebankdb/active"
+out="/Volumes/WD4TB/projects/covid"
+
 src=~/projects/movebankdb/src
-pd=~/projects/movebankdb/analysis/movebankdb
 
 cd $pd
 
@@ -14,25 +21,13 @@ cd $pd
 #---- Load datasets ----#
 #-----------------------#
 
-#TODO: Currently can't download using api
-# LifeTrack White Stork SWGermany 2014-2018 Failed, maybe permission error
-# LifeTrack White Stork Vorarlberg also failed
-#TODO: #Look at this to see how to redirect stderr and stdout
-#https://stat.ethz.ch/pipermail/r-help/2010-June/241789.html
-
-out="/Volumes/WD4TB/projects/movebankdb/active"
+#See docs/notes.txt for notes about loading specific datasets
 
 # Use miller to filter by run column and then take the study_id field
 # need to use tail to remove first line, which is the header
-studyIds=($(mlr --csv --opprint filter '$run == 1' then cut -f study_id study.csv | tail -n +2))
+studyIds=($(mlr --csv --opprint filter '$run == 1' then cut -f study_id ctfs/study.csv | tail -n +2))
 #echo ${#studyIds[@]} #number of items in array
 #echo ${studyIds[@]} #for some reason this is not printing all items
-
-#TODO: run validate for studies in EFA04B7F-979B-41D7-8DA4-FB8904A98B92_success.txt
-# I think last one did not load events due to issue reading event csv from disk
-# read_csv gave a warning message related to the gps_fix_accuracy (or something) column
-# more notes
-#   662814098. this is the one that had the error and did not load any data
 
 runid=`uuidgen`
 sucf="${runid}_success.txt"
@@ -44,16 +39,16 @@ do
   echo "Start processing study ${studyId}"
   echo "*******"
   
-  studyId=662814098
+  #studyId=474651680
   
   #Run download script, then if no errors run load and validate scripts
-  $src/db/import/get_study_data.r $studyId "$out/${studyId}"
+  $src/db/get_study_data.r $studyId "$out/${studyId}" -a input
   
   if [ $? -eq 0 ]; then
     echo "Successfully downloaded data"
 
     echo "Loading data for study ${studyId}"
-    $src/db/import/load_study_data.r ${studyId} "${out}/${studyId}"
+    $src/db/load_study_data.r ${studyId} "${out}/${studyId}"
   
     echo "Validating load for study ${studyId}"
     $src/db/import/validate_import.r ${studyId} "${out}/${studyId}"
@@ -75,8 +70,4 @@ done
 #Also look into vacuum
 #https://www.sqlitetutorial.net/sqlite-vacuum/
 
-#Database management
 
-#Black Stork in Spain - Migra Program in Spain
-$src/db/delete_study.r 682808477
-rm -r ${out}/682808477

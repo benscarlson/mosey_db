@@ -58,6 +58,7 @@ source(rd('src/startup.r'))
 
 suppressPackageStartupMessages({
   library(DBI)
+  library(knitr)
   library(RSQLite)
 })
 

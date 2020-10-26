@@ -107,6 +107,7 @@ CREATE TABLE IF NOT EXISTS `event` (
   `gps_satellite_count` REAL,
   `horizontal_accuracy` REAL,
   `time_to_fix` REAL,
+  `fix_type` INTEGER,
 	FOREIGN KEY(tag_id) REFERENCES tag(tag_id),
 	FOREIGN KEY(individual_id) REFERENCES individual(individual_id)
 ) WITHOUT ROWID;

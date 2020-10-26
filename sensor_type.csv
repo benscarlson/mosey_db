@@ -1,0 +1,12 @@
+external_id,id,is_location_sensor,name
+bird-ring,397,TRUE,Bird Ring
+gps,653,TRUE,GPS
+radio-transmitter,673,TRUE,Radio Transmitter
+argos-doppler-shift,82798,TRUE,Argos Doppler Shift
+natural-mark,2365682,TRUE,Natural Mark
+acceleration,2365683,FALSE,Acceleration
+solar-geolocator,3886361,TRUE,Solar Geolocator
+accessory-measurements,7842954,FALSE,Accessory Measurements
+solar-geolocator-raw,9301403,FALSE,Solar Geolocator Raw
+barometer,77740391,FALSE,Barometer
+magnetometer,77740402,FALSE,Magnetometer

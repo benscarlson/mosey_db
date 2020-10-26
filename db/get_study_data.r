@@ -9,13 +9,13 @@
 Get and clean all data for a study from movebank api
 
 Usage:
-get_study_data.r <studyid> <out> [-a] [-t] [--seed=<seed>]
+get_study_data.r <studyid> <out> [-t] [--auth=<auth>] [--seed=<seed>]
 get_study_data.r (-h | --help)
 
 Options:
 -h --help     Show this screen.
 -v --version     Show version.
--a --auth         Authentication method. Can be password or keyring. Default is keyring.
+-a --auth=<auth>         Authentication method. Can be password or keyring. Default is keyring.
 -s --seed=<seed>  Random seed. Defaults to 5326 if not passed
 -t --test         Indicates script is a test run, will not save output parameters or commit to git
 ' -> doc
@@ -30,9 +30,9 @@ if(interactive()) {
   .test <- TRUE
   rd <- here
 
-  .studyid <- 10763606	#LifeTrack White Stork Poland
-  .auth <- 'password'
-  .out <- "/Volumes/WD4TB/projects/movebankdb/test"
+  .studyid <- 474651680
+  .auth <- 'input'
+  .out <- "/Volumes/WD4TB/projects/covid/test"
   #.out <- 'test'
   
 } else {
@@ -48,7 +48,7 @@ if(interactive()) {
   .test <- as.logical(ag$test)
   rd <- is_rstudio_project$make_fix_file(.script)
   
-  .auth <- ifelse(is.null(ag$auth),'password',ag$auth)
+  .auth <- ifelse(is.null(ag$auth),'keyring',ag$auth)
   .studyid <- as.integer(ag$studyid)
   .out <- trimws(ag$out)
 
@@ -66,6 +66,7 @@ suppressPackageStartupMessages({
   library(DBI)
   library(getPass)
   library(keyring)
+  library(knitr)
   library(rmoveapi)
   library(RSQLite)
   library(R.utils)
@@ -83,10 +84,10 @@ db <- DBI::dbConnect(RSQLite::SQLite(), .dbPF)
 
 invisible(assert_that(length(dbListTables(db))>0))
 
-if(.auth=='password') {
-  setAuth('ben.s.carlson',getPass('Movebank password:'))
-} else {
-  setAuth('ben.s.carlson',key_get('movebank_pass'))
+if(.auth=='input') {
+  setAuth(getPass('Movebank user:'),getPass('Movebank password:'))
+} else if(.auth=='keyring') {
+  setAuth(key_get('movebank_user'),key_get('movebank_pass'))
 }
 
 
