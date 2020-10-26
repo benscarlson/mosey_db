@@ -51,7 +51,7 @@ do
     $src/db/load_study_data.r ${studyId} "${out}/${studyId}"
   
     echo "Validating load for study ${studyId}"
-    $src/db/import/validate_import.r ${studyId} "${out}/${studyId}"
+    $src/db/validate_import.r ${studyId} "${out}/${studyId}"
     
     echo ${studyId} >> $sucf
   else
