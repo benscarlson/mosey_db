@@ -15,24 +15,28 @@ get_study_data.r (-h | --help)
 Options:
 -h --help     Show this screen.
 -v --version     Show version.
--a --auth=<auth>         Authentication method. Can be password or keyring. Default is keyring.
+-a --auth=<auth>  Authentication method. Can be password, keyring, or path to yml file. Default is keyring.
 -s --seed=<seed>  Random seed. Defaults to 5326 if not passed
 -t --test         Indicates script is a test run, will not save output parameters or commit to git
 ' -> doc
+
+isAbsolute <- function(path) {
+  grepl("^(/|[A-Za-z]:|\\\\|~)", path)
+}
 
 #---- Input Parameters ----#
 if(interactive()) {
   library(here)
   
-  .wd <- '~/projects/movebankdb/analysis/movebankdb'
-  .script <- 'src/db/get_study_data.r' #Currently executing script
+  .wd <- '~/projects/covid/analysis/movebankdb'
+  #.script <- 'src/db/get_study_data.r' #Currently executing script
   .seed <- NULL
   .test <- TRUE
   rd <- here
 
-  .studyid <- 474651680
-  .auth <- 'input'
-  .out <- "/Volumes/WD4TB/projects/covid/test"
+  .studyid <- 1228193116
+  .auth <- NULL
+  .out <- "/Volumes/WD4TB/projects/covid/data"
   #.out <- 'test'
   
 } else {
@@ -48,10 +52,10 @@ if(interactive()) {
   .test <- as.logical(ag$test)
   rd <- is_rstudio_project$make_fix_file(.script)
   
-  .auth <- ifelse(is.null(ag$auth),'keyring',ag$auth)
+  .auth <- ag$auth
   .studyid <- as.integer(ag$studyid)
   .out <- trimws(ag$out)
-
+  .outP <- ifelse(isAbsolute(.out),.out,file.path(.wd,.out))
 }
 
 #---- Initialize Environment ----#
@@ -69,13 +73,14 @@ suppressPackageStartupMessages({
   library(knitr)
   library(rmoveapi)
   library(RSQLite)
-  library(R.utils)
+  library(yaml)
+  #library(R.utils)
 })
 
 source(rd('src/funs/breezy_funs.r'))
 
+
 #---- Local parameters ----#
-.outP <- ifelse(isAbsolutePath(.out),.out,file.path(.wd,.out))
 .evtrawP <- file.path(.outP,'event_raw.csv')
 .dbPF <- file.path(.wd,'data/movebank.db')
 
@@ -84,10 +89,23 @@ db <- DBI::dbConnect(RSQLite::SQLite(), .dbPF)
 
 invisible(assert_that(length(dbListTables(db))>0))
 
-if(.auth=='input') {
-  setAuth(getPass('Movebank user:'),getPass('Movebank password:'))
+
+# If auth is null, look for auth.yml in the working directory
+# otherwise based on user request
+if(is.null(.auth) || grepl('.*\\.yml$',.auth)) {
+  if(is.null(.auth)) {
+    yamlPF <- file.path(.wd,'auth.yml')
+  } else {
+    yamlPF <- ifelse(isAbsolute(.auth),.auth,file.path(.wd,.auth))
+  }
+  cred <- read_yaml(yamlPF)
+  setAuth(cred$user,cred$pass)
 } else if(.auth=='keyring') {
   setAuth(key_get('movebank_user'),key_get('movebank_pass'))
+} else if(.auth=='input') {
+  setAuth(getPass('Movebank user:'),getPass('Movebank password:'))
+} else {
+  stop('Invalid authentication method')
 }
 
 
@@ -98,7 +116,7 @@ invisible(assert_that(dir.exists(.outP)))
 message(glue('Downloading and cleaning data for study {.studyid}'))
 
 #---- Load data ----#
-sensTypes <- read_csv(rd('src/sensor_type.csv')) %>% #lookup table for tag types
+sensTypes <- read_csv(rd('src/sensor_type.csv'),col_types=cols()) %>% #lookup table for tag types
   rename(sensor_type_id=id)
 
 #---------------#
@@ -135,34 +153,42 @@ i_am_owner, death_comments, comments'
 attributes <- trimws(str_split(attstr,',')[[1]])
 
 #TODO: can fail here if I don't have access. Need to add in error handling
-ind00 <- getIndividual(.studyid,params=list(attributes=attributes),accept_license=TRUE) 
+ind00 <- getIndividual(.studyid,params=list(attributes=attributes),accept_license=TRUE)  %>% 
+  rename(individual_id=id) 
 
 spp <- unique(ind00$taxon_canonical_name)
 
 message(glue('Found the following species: {paste(spp,collapse=", ")}'))
 
-message(glue('Checking for individuals with invalid species identity (e.g. Homo sapiens)'))
-
-#Below code will also remove any individuals where species is NA
-ind0 <- ind00  %>%
-  rename(individual_id=id) %>%
-  filter(!str_detect(tolower(taxon_canonical_name),'homo sapien'))
-
-if(nrow(ind00)-nrow(ind0) > 0) {
-  message(glue('Found and removed the following {nrow(ind00)-nrow(ind0)} invalid individuals'))
-  
-  ind00 %>% 
-    filter(str_detect(tolower(taxon_canonical_name),'homo sapien') | 
-             is.na(taxon_canonical_name)) %>%
-    select(id,local_identifier,nick_name,taxon_canonical_name) %>%
-    kable
-  
+if(all(is.na(ind00$taxon_canonical_name))) {
+  message('Species name is empty for all individuals. Assume this is okay. Proceeding without checking for invalid species')
+  ind0 <- ind00
 } else {
-  message('Did not find any invalid individuals')
+  message(glue('Checking for individuals with invalid species identity (e.g. Homo sapiens)'))
+  
+  #Below code will also remove any individuals where species is NA
+  ind0 <- ind00  %>%
+    filter(!str_detect(tolower(taxon_canonical_name),'homo sapien'))
+  
+  if(nrow(ind00)-nrow(ind0) > 0) {
+    message(glue('Found and removed the following {nrow(ind00)-nrow(ind0)} invalid individuals'))
+    
+    ind00 %>% 
+      filter(str_detect(tolower(taxon_canonical_name),'homo sapien') | 
+               is.na(taxon_canonical_name)) %>%
+      select(id,local_identifier,nick_name,taxon_canonical_name) %>%
+      kable
+    
+  } else {
+    message('Did not find any invalid individuals')
+  }
 }
+  
+
 
 #View(ind0)
-invisible(assert_that(ind0 %>% filter(is.na(taxon_canonical_name)) %>% nrow == 0)) #All individuals have species assigned
+#In many cases species names have not been uploaded, so can't check the condition below
+#invisible(assert_that(ind0 %>% filter(is.na(taxon_canonical_name)) %>% nrow == 0)) #All individuals have species assigned
 invisible(assert_that(!ind0 %>% map(~str_detect(.,'[\r\n]')) %>% unlist %>% any(na.rm=TRUE))) #Check for nonprinting line breaks
 invisible(assert_that(!ind0 %>% map(~str_detect(.,'^\\s+')) %>% unlist %>% any(na.rm=TRUE))) #Check for white space in beginning
 invisible(assert_that(!ind0 %>% map(~str_detect(.,'\\s+$')) %>% unlist %>% any(na.rm=TRUE))) #Check for white space at end
@@ -226,19 +252,25 @@ dep0 <- getDeployment(.studyid,params=list(attributes=attributes)) %>% rename(de
 
 #remove deployments for filtered individuals
 dep <- dep0 %>% inner_join(ind0 %>% select(individual_id), by='individual_id')
-message(glue('Removed {nrow(dep0)-nrow(dep)} deployments for filtered individuals'))
+if(nrow(dep0)-nrow(dep) > 0) {
+  message(glue('Removed {nrow(dep0)-nrow(dep)} deployments for filtered individuals'))
+} 
 
 ind <- ind0 %>% inner_join(dep %>% distinct(individual_id),by='individual_id')
-message(glue('Removed {nrow(ind0)-nrow(ind)} undeployed individuals'))
-
+if(nrow(ind0)-nrow(ind)) {
+  message(glue('Removed {nrow(ind0)-nrow(ind)} undeployed individuals'))
+}
 #remove undeployed tags. Note must use distinct() on dep b/c can have multiple deployments
 tag <- tag0 %>% inner_join(dep %>% distinct(tag_id), by='tag_id')
-message(glue('Removed {nrow(tag0)-nrow(tag)} undeployed tags'))
+if(nrow(tag0)-nrow(tag)) {
+  message(glue('Removed {nrow(tag0)-nrow(tag)} undeployed tags'))
+}
 
 #remove all sensors that are attached to undeployed tags
 sens <- sens0 %>% inner_join(tag %>% select(tag_id),by='tag_id')
-message(glue('Removed {nrow(sens0)-nrow(sens)} undeployed sensors'))
-
+if(nrow(sens0)-nrow(sens) > 0) {
+  message(glue('Removed {nrow(sens0)-nrow(sens)} undeployed sensors'))
+}
 
 #---------------------#
 #--- sanity checks ---#
@@ -292,7 +324,7 @@ invisible(assert_that(!any(duplicated(sens$sensor_id))))
 # we want visible=TRUE
 # 
 
-message('Getting GPS (653) event data...')
+message('Getting GPS (653) event data. This can take awhile...')
 
 attributes <- c('event_id','individual_id','location_long','location_lat','timestamp',
                 'sensor_type_id','tag_id',
