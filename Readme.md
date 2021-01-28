@@ -1,6 +1,6 @@
 # Getting started
 
-## Using a movebandb
+## Using a movebankb
 
 
 This section assumes you have a movebankdb sqlite file. See below if you want to create and populate a new database.
