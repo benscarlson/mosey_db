@@ -11,12 +11,13 @@ load_datasets 0.1
 EOF
 )"
 
+#TODO: remove some of the hard-coded paths, such as the name of the database
 
 #----
 #---- Set up variables
 #----
 
-pd=${argv[0]}
+src=${argv[0]}
 out=${argv[1]}
 
 
@@ -27,10 +28,6 @@ out=${argv[1]}
 #This is where csv files downloaded from movebank are staged prior to db import
 #out="/Volumes/WD4TB/projects/movebankdb/active"
 #out="/Volumes/WD4TB/projects/covid/data"
-
-src=~/projects/movebankdb/src
-
-cd $pd
 
 #-----------------------#
 #---- Load datasets ----#

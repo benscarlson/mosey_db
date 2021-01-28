@@ -112,6 +112,22 @@ CREATE TABLE IF NOT EXISTS `event` (
 	FOREIGN KEY(individual_id) REFERENCES individual(individual_id)
 ) WITHOUT ROWID;
 
+---- 
+---- Extension tables 
+----
+
+CREATE TABLE IF NOT EXISTS `event_indiv_stats` (
+	`individual_id`	INTEGER,
+	`ts_min` TEXT,
+	`ts_max` TEXT,
+	`lon_min` REAL,
+	`lon_max` REAL,
+	`lon_mean` REAL,
+	`lat_min` REAL,
+	`lat_max` REAL,
+	`lat_mean` REAL,
+	FOREIGN KEY(individual_id) REFERENCES individual(individual_id)
+);
 ---- Create Indices
 
 create index idx_event_timestamp on event (timestamp);
