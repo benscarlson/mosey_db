@@ -5,8 +5,6 @@
 
 This section assumes you have a movedb sqlite file. See below if you want to create and populate a new database.
 
-Each example below shows you how to run a query on the database using dplyr, and the equivilent syntax using sql.
-
 ````{r}
 library(DBI)
 library(dplyr)
@@ -24,40 +22,54 @@ indtb <- tbl(db,'individual')
 evttb <- tbl(db,'event')
 ````
 
-#### Get get info on all studies in the database
+Each example below shows you how to run a query on the database using dplyr, and the equivilent syntax using sql.
 
+### Get get info on all studies in the database
+
+#### dplyr
 ````{r}
 stdtb %>% select(study_id,study_name) %>% as_tibble
+````
 
+#### sql
+````{r}
 'select study_id, study_name from study' %>%
   dbGetQuery(db,.)
 ````
 
-#### How many individuals in the database?
+### How many individuals are in the database?
 
 Note the differences between these two approaches. The first pulls all data into R and then counts the rows. The second counts the rows in the database and just returns a single number.
 
+#### dplyr
 ````{r}
-
 indtb %>% as_tibble %>% nrow
+````
 
+#### sql
+````{r}
 'select count(*) as num from individual' %>%
   dbGetQuery(db,.)
 ````
 
-#### How many individuals per study?
+### How many individuals per study?
 
+#### dplyr
 ````{r}
 indtb %>% group_by(study_id) %>% summarize(num=n())
-  
+````
+
+#### sql
+````{r}  
 'select study_id, count(*) as num 
   from individual 
   group by study_id' %>%
   dbGetQuery(db,.)
 ````
 
-#### How many locations per individual, for a particular study?
+### How many locations per individual, for a particular study?
 
+#### dplyr
 ````{r}
 
 evttb %>% 
@@ -65,7 +77,10 @@ evttb %>%
   filter(study_id==954787575) %>% 
   group_by(individual_id) %>%
   summarize(num=n())
+````
 
+#### sql
+````{r}
 'select i.individual_id, count(*) as num
   from event e 
   inner join individual i
@@ -75,7 +90,7 @@ evttb %>%
   dbGetQuery(db,.)
 ````
 
-Joining to a really large event table can take a long time. An alternative way to run this query is to use an sql subquery. I dont think this approach is possible using dbplyr.
+Joining to a really large event table can take a long time. An alternative way to run this query is to use an sql subquery. I dont think this approach is possible using dplyr.
 
 ````{r}
 'select individual_id, count(*) as num
@@ -88,14 +103,18 @@ Joining to a really large event table can take a long time. An alternative way t
 
 ````
 
-#### Find start and end dates, per project
+### Find start and end dates, per project
 
+#### dplyr
 ````{r}
 evttb %>% 
   inner_join(indtb,by='individual_id') %>% 
   group_by(study_id) %>%
   summarize(min=min(timestamp), max=(timestamp))
+````
 
+#### sql
+````{r}
 'select i.individual_id, min(timestamp) as min, max(timestamp) as max
   from event e 
   inner join individual i
@@ -104,20 +123,22 @@ evttb %>%
   dbGetQuery(db,.)
 ````
 
-#### Get all data between start and end dates, for all projects
+### Get all data between start and end dates, for all projects
 
+#### dplyr
 ````{r}
 evttb %>% 
   filter(between(timestamp,'2019-09-01','2019-10-01'))
+````
 
+#### sql
+````{r}
 'select * from event 
   where timestamp between "2019-09-01" and "2019-10-01"' %>%
   dbGetQuery(db,.)
 ````
 
 ## Create and populate a new movebankdb
-
-Warning! I haven't tested this yet. Please let me know if you run into issues.
 
 ### Create a new database
 
