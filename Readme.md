@@ -1,7 +1,7 @@
 # Getting started
 
-## Using movedb
 
+## Using movedb
 
 This section assumes you have a movedb sqlite file. See below if you want to create and populate a new database.
 
