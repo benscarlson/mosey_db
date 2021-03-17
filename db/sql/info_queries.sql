@@ -42,3 +42,27 @@ from event e
 inner join individual i on e.individual_id = i.individual_id
 inner join study s on i.study_id = s.study_id
 group by i.study_id
+
+-- full query takes 100 seconds
+-- subquery takes 35 seconds
+select i.study_id, sum(num) as num
+from individual i 
+inner join (
+	select individual_id, count(*) as num
+	from event
+	group by individual_id) s
+on i.individual_id = s.individual_id
+group by i.study_id
+
+-- Try temp table approach. Much faster!
+CREATE TEMP TABLE event_ind_count AS 	
+	select individual_id, count(*) as num
+	from event
+	group by individual_id
+
+select i.study_id, s.study_name, sum(c.num) as num
+from individual i 
+inner join event_ind_count c on i.individual_id = c.individual_id
+inner join study s on i.study_id = s.study_id
+group by i.study_id
+

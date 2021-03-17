@@ -12,5 +12,3 @@ cd $wd
 
 $src/db/load_datasets.sh $src $out
   
-
-

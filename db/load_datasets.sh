@@ -11,8 +11,10 @@ load_datasets 0.1
 EOF
 )"
 
-#TODO: remove some of the hard-coded paths, such as the name of the database
-
+#TODO: change the name to something else?
+#TODO: remove some of the hard-coded paths, such as the name of the database.
+#TODO: pass in the path to the database.
+#TODO: I should not pass in src, seems strange. Maybe I should have a MOVEDB_SRC env variable?
 #----
 #---- Set up variables
 #----
