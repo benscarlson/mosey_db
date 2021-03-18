@@ -18,13 +18,12 @@ Options:
 if(interactive()) {
   library(here)
   
-  .wd <- '~/projects/movebankdb/analysis/movebankdb'
-  .script <- 'src/db/delete_study.r' #Currently executing script
+  .wd <- '~/projects/movedb/analysis/test_get_clean'
   .seed <- NULL
   .test <- TRUE
   rd <- here
   
-  .studyid <- 682808477	#Black Stork in Spain - Migra Program in Spain
+  .studyid <- 631036041	#Black Stork in Spain - Migra Program in Spain
 } else {
   library(docopt)
   library(rprojroot)
@@ -47,13 +46,16 @@ t0 <- Sys.time()
 
 source(rd('src/startup.r'))
 
-suppressPackageStartupMessages({
-  library(DBI)
-  library(knitr)
-  library(RSQLite)
-})
+suppressWarnings(
+  suppressPackageStartupMessages({
+    library(DBI)
+    library(knitr)
+    library(RSQLite)
+  }))
 
-source(rd('src/funs/breezy_funs.r'))
+#Source all files in the auto load funs directory
+list.files(rd('src/funs/auto'),full.names=TRUE) %>%
+  walk(source)
 
 #---- Local parameters ----#
 .dbPF <- file.path(.wd,'data/movebank.db')

@@ -5,12 +5,13 @@ Makes sure study imported correctly by checking row counts
 between csv files and database tables
 
 Usage:
-validate_import.r <studyid> <dat> [-t] [--seed=<seed>]
+validate_import.r <studyid> [--dat=<dat>] [-t] [--seed=<seed>]
 script_template (-h | --help)
 
 Options:
 -h --help     Show this screen.
 -v --version     Show version.
+-d --dat=<dat>  Folder containing the data to load. Defaults to <wd>/data/<studyid>/clean
 -s --seed=<seed>  Random seed. Defaults to 5326 if not passed
 -t --test         Indicates script is a test run, will not save output parameters or commit to git
 -e --eda         Indicates eda mode, plots with additional info
@@ -20,14 +21,13 @@ Options:
 if(interactive()) {
   library(here)
   
-  .wd <- '~/projects/movebankdb/analysis/movebankdb'
-  .script <- 'src/db/validate_import.r' #Currently executing script
+  .wd <- '~/projects/movedb/analysis/test_get_clean'
   .seed <- NULL
   .test <- TRUE
   rd <- here
   
-  .studyid <- 10763606	#LifeTrack White Stork Poland
-  .datP <- "/Volumes/My Book/projects/movebankdb/active/10763606"
+  .studyid <- 631036041
+  .outP <- file.path(.wd,'data',.studyid,'clean')
 } else {
   suppressPackageStartupMessages({
     library(docopt)
@@ -44,8 +44,13 @@ if(interactive()) {
   rd <- is_rstudio_project$make_fix_file(.script)
   
   .studyid <- as.integer(ag$studyid)
-  .datP <- trimws(ag$dat)
-  .datP <- ifelse(isAbsolutePath(.datP),.datP,file.path(.wd,.datP))
+  
+  if(is.null(ag$dat)) {
+    .datP <- file.path(.wd,'data',.studyid,'clean')
+  } else {
+    .datP <- trimws(ag$dat)
+    .datP <- ifelse(isAbsolute(.dat),.dat,file.path(.wd,.dat))
+  }
 }
 
 #---- Initialize Environment ----#
@@ -56,20 +61,23 @@ t0 <- Sys.time()
 
 source(rd('src/startup.r'))
 
-suppressPackageStartupMessages({
-  library(DBI)
-  library(knitr)
-  library(RSQLite)
-})
+suppressWarnings(
+  suppressPackageStartupMessages({
+    library(DBI)
+    library(knitr)
+    library(RSQLite)
+  }))
 
-source(rd('src/funs/breezy_funs.r'))
+#Source all files in the auto load funs directory
+list.files(rd('src/funs/auto'),full.names=TRUE) %>%
+  walk(source)
 
 #---- Local parameters ----#
 .dbPF <- file.path(.wd,'data/movebank.db')
-#.datP <- file.path(.wd,'projects',.studyid)
 
 #---- Initialize database ----#
 db <- dbConnect(RSQLite::SQLite(), .dbPF)
+invisible(assert_that(length(dbListTables(db))>0))
 
 #---------------------#
 #---- Main script ----#
@@ -112,7 +120,7 @@ res <- tibble(tname=c('deployment','event','individual','sensor','study','tag'),
   mutate(
     q=map_chr(q,glue),
     file_n=map_dbl(tname,~{
-      fn <- file.path(.datP,glue('{.}.csv'))
+      fn <- file.path(.datP,glue('{.}.csv')) %>% path.expand
       as.integer(system(glue('wc -l < "{fn}"'),intern=TRUE)) - 1
     }),
     db_n=map_dbl(q,~{dbGetQuery(db, .)[1,1]}),
@@ -120,7 +128,10 @@ res <- tibble(tname=c('deployment','event','individual','sensor','study','tag'),
   ) %>%
   select(-q)
 
-res %>% kable
+res %>%
+  kable(col.names=c('Entity','File Rows','DB Rows','Equal'),
+    format.args = list(big.mark = ",")) %>%
+  paste(collapse='\n') %>% message
 
 
 

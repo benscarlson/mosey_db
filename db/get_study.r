@@ -1,8 +1,8 @@
 #!/usr/bin/env Rscript --vanilla
 
 #TODO: if script fails, remove download folder?
-#TODO: could put renaming of columns into the fields csv. 
-#       could also do renaming during clean
+#TODO: now that I'm requesting all entities in a standard way I could use a function
+
 '
 Get and clean all data for a study from movebank api
 
@@ -33,7 +33,7 @@ if(interactive()) {
   .test <- TRUE
   rd <- here
 
-  .studyid <- 657640587
+  .studyid <- 631036041
   .auth <- NULL
   #.out <- "/Volumes/WD4TB/projects/covid/data"
   #.out <- 'test'
@@ -113,7 +113,7 @@ invisible(assert_that(dir.exists(.outP)))
 
 #---- Load data ----#
 
-fields <- read_csv(file.path(.wd,'fields.csv'),col_types=cols())
+fields <- read_csv(rd('src/fields.csv'),col_types=cols())
 
 message(glue('Downloading data for study {.studyid} from movebank'))
 
@@ -122,12 +122,12 @@ message(glue('Downloading data for study {.studyid} from movebank'))
 #---------------#
 message('Getting study data')
 
-attributes <- fields %>% filter(table=='study') %>% pull('field_name')
+attributes <- fields %>% filter(table=='study' & !is.na(name_raw)) %>% pull('name_raw')
 
-std <- getStudy(.studyid,params=list(attributes=attributes)) %>% 
-  rename(study_id=id,study_name=name) 
+std <- getStudy(.studyid,params=list(attributes=attributes)) #%>% 
+  #rename(study_id=id,study_name=name) 
 
-message(glue('Study name is: {std$study_name}'))
+message(glue('Study name is: {std$name}'))
 message(glue('Reported num individuals: {std$number_of_individuals}, num events: {format(std$number_of_deployed_locations,big.mark=",")}'))
 #View(t(std))
 
@@ -136,47 +136,46 @@ message(glue('Reported num individuals: {std$number_of_individuals}, num events:
 #--------------------#
 message('Getting individual data')
 
-attributes <- fields %>% filter(table=='individual') %>% pull('field_name')
+attributes <- fields %>% filter(table=='individual' & !is.na(name_raw)) %>% pull('name_raw')
 
-ind <- getIndividual(.studyid,params=list(attributes=attributes),accept_license=TRUE) %>% 
-  rename(individual_id=id) 
+ind <- getIndividual(.studyid,params=list(attributes=attributes),accept_license=TRUE) #%>% 
+  #rename(individual_id=id) 
 
-getIndividual(.studyid,params=list(attributes=attributes),accept_license=TRUE,urlonly=TRUE)
-
-
-#View(ind0)
+#View(ind)
 
 #----------------#
 #---- sensor ----#
 #----------------#
 message('Getting sensor data')
 
-attributes <- fields %>% filter(table=='sensor') %>% pull('field_name')
+attributes <- fields %>% filter(table=='sensor' & !is.na(name_raw)) %>% pull('name_raw')
 
-sens <- getSensor(.studyid,params=list(attributes=attributes)) %>% 
-  rename(sensor_id=id)
+sens <- getSensor(.studyid,params=list(attributes=attributes)) #%>% 
+  #rename(sensor_id=id)
+#View(sens)
 
 #----------------#
 #---- tag ----#
 #----------------#
 message('Getting tag data')
 
-attributes <- fields %>% filter(table=='tag') %>% pull('field_name')
+attributes <- fields %>% filter(table=='tag' & !is.na(name_raw)) %>% pull('name_raw')
 
-tag <- getTag(.studyid,params=list(attributes=attributes)) %>% 
-  rename(tag_id=id)
+tag <- getTag(.studyid,params=list(attributes=attributes)) #%>% 
+  #rename(tag_id=id)
 
-#View(tag0)
+#View(tag)
 
 #--------------------#
 #---- deployment ----#
 #--------------------#
 message('Getting deployment data')
 
-attributes <- fields %>% filter(table=='deployment') %>% pull('field_name')
+attributes <- fields %>% filter(table=='deployment' & !is.na(name_raw)) %>% pull('name_raw')
 
-dep <- getDeployment(.studyid,params=list(attributes=attributes)) %>% 
-  rename(deployment_id=id)
+dep <- getDeployment(.studyid,params=list(attributes=attributes)) #%>% 
+  #rename(deployment_id=id)
+#View(dep)
 
 #---------------#
 #---- event ----#
@@ -184,7 +183,7 @@ dep <- getDeployment(.studyid,params=list(attributes=attributes)) %>%
 
 message('Getting GPS (653) event data. This can take awhile...')
 
-attributes <- fields %>% filter(table=='event') %>% pull('field_name')
+attributes <- fields %>% filter(table=='event' & !is.na(name_raw)) %>% pull('name_raw')
 
 tic()
 status <- getEvent(.studyid,attributes,sensor_type_id=653,save_as=file.path(.outP,'event.csv'))

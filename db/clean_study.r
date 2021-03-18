@@ -1,10 +1,8 @@
 #!/usr/bin/env Rscript --vanilla
 
 #TODO: can make studyid optional. It is only used if raw and out folders are not specified
-#TODO: !!!START HERE!!! individual, row 34, has '2019-05-01 00:00:00.000' for the date
-#       seems this should be a date, but its saved as a timestamp
-#       is this really a timestamp in movebank, or did write_csv add on blank time?
-# Confirmed: it comes back from movebank as a timestamp. So, need to load using timestamp.
+#TODO: now that I'm requesting all entities in a standard way I could use a function
+
 '
 Clean all data for a study. Assumes data is available as csv files, formatted according to the output
 of get_study_data.r
@@ -31,12 +29,11 @@ if(interactive()) {
   library(here)
   
   .wd <- '~/projects/movedb/analysis/test_get_clean'
-
   .seed <- NULL
   .test <- TRUE
   rd <- here
 
-  .studyid <- 657640587
+  .studyid <- 631036041
 
   .rawP <- file.path(.wd,'data',.studyid,'raw')
   .outP <- file.path(.wd,'data',.studyid,'clean')
@@ -80,13 +77,19 @@ t0 <- Sys.time()
 
 source(rd('src/startup.r'))
 
-suppressPackageStartupMessages({
-  library(knitr)
-})
+suppressWarnings(
+  suppressPackageStartupMessages({
+    library(knitr)
+}))
 
 #Source all files in the auto load funs directory
 list.files(rd('src/funs/auto'),full.names=TRUE) %>%
   walk(source)
+
+#This sets the movebank output format for timestamps for write_csv
+output_column.POSIXct <- function(x) {
+  format(x, "%Y-%m-%d %H:%M:%OS3", tz='UTC')
+}
 
 dir.create(.outP,showWarnings=FALSE,recursive=TRUE)
 
@@ -98,57 +101,51 @@ message(glue('Cleaning data for study {.studyid}'))
 sensTypes <- read_csv(rd('src/sensor_type.csv'),col_types=cols()) %>% #lookup table for tag types
   rename(sensor_type_id=id)
 
-fields <- read_csv(file.path(.wd,'fields.csv'),col_types=cols())
+fields <- read_csv(rd('src/fields.csv'),col_types=cols())
 
 #---------------#
 #---- study ----#
 #---------------#
+stdFields <- fields %>% 
+  filter(table=='study' & !is.na(name_raw)) 
 
-#No cleaning required for the study csv
+std <- read_csv(file.path(.rawP,'study.csv'),col_types=cols()) %>%
+  rename(!!!setNames(stdFields$name_raw,stdFields$name_clean))
 
 #--------------------#
 #---- individual ----#
 #--------------------#
 message('Loading individual data')
 
-coltypes <- fields %>% 
-  filter(table=='individual' & !is.na(field_type)) %>% 
-  pull('field_type') %>% paste(collapse="")
+indFields <- fields %>% filter(table=='individual' & !is.na(type_raw))
 
-#if coltypes is an empty string it seems like this will guess all columns
-ind00 <- read_csv(file.path(.rawP,'individual.csv'),col_types=coltypes)
+#Load raw data using specified column types, then rename columns to cleaned names
+ind00 <- read_csv(file.path(.rawP,'individual.csv'),
+          col_types=paste(indFields$type_raw,collapse="")) %>%
+  rename(!!!setNames(indFields$name_raw,indFields$name_clean))
 
 spp <- unique(ind00$taxon_canonical_name)
 
 message(glue('Found the following species: {paste(spp,collapse=", ")}'))
 
-# if(all(is.na(ind00$taxon_canonical_name))) {
-#   #Don't think I need this, b/c now I'm letting any number of NA through.
-#   message('Species name is empty for all individuals. Assume this is okay. Proceeding without checking for invalid species')
-#   ind0 <- ind00
-# } else {
-  message(glue('Checking for individuals with invalid species identity (e.g. Homo sapiens)'))
-  
-  #Have to explicitly allow taxon name to be NA, b/c it isn't always completely entered 
-  ind0 <- ind00  %>%
-    filter(is.na(taxon_canonical_name) | !str_detect(tolower(taxon_canonical_name),'homo sapien'))
-  
-  if(nrow(ind00)-nrow(ind0) > 0) {
-    message(glue('Found and removed the following {nrow(ind00)-nrow(ind0)} invalid individuals'))
-    
-    ind00 %>% 
-      filter(str_detect(tolower(taxon_canonical_name),'homo sapien') | 
-               is.na(taxon_canonical_name)) %>%
-      select(id,local_identifier,nick_name,taxon_canonical_name) %>%
-      kable
-    
-  } else {
-    message('Did not find any invalid individuals')
-  }
-#}
+message(glue('Checking for individuals with invalid species identity (e.g. Homo sapiens)'))
 
+#Have to explicitly allow taxon name to be NA, b/c it isn't always completely entered 
+ind0 <- ind00  %>%
+  filter(is.na(taxon_canonical_name) | !str_detect(tolower(taxon_canonical_name),'homo sapien'))
 
-#
+if(nrow(ind00)-nrow(ind0) > 0) {
+  message(glue('Found and removed the following {nrow(ind00)-nrow(ind0)} invalid individuals'))
+  
+  ind00 %>% 
+    filter(str_detect(tolower(taxon_canonical_name),'homo sapien') | 
+             is.na(taxon_canonical_name)) %>%
+    select(id,local_identifier,nick_name,taxon_canonical_name) %>%
+    kable
+  
+} else {
+  message('Did not find any invalid individuals')
+}
 
 #View(ind0)
 
@@ -157,13 +154,18 @@ message(glue('Found the following species: {paste(spp,collapse=", ")}'))
 #----------------#
 message('Loading sensor data')
 
-sens0 <- read_csv(file.path(.rawP,'sensor.csv'),col_types=cols())
+sensFields <- fields %>% filter(table=='sensor' & !is.na(type_raw))
+
+sens0 <- read_csv(file.path(.rawP,'sensor.csv'),
+          col_types=paste(sensFields$type_raw,collapse="")) %>%
+  rename(!!!setNames(sensFields$name_raw,sensFields$name_clean))
 
 message('Found the following sensors:')
 
 sens0 %>% distinct(sensor_type_id) %>% 
   left_join(sensTypes %>% select(sensor_type_id,name),by='sensor_type_id') %>%
-  arrange(sensor_type_id) %>% kable
+  arrange(sensor_type_id) %>% 
+  kable %>% paste(collapse='\n') %>% message
 
 #View(sens0)
 
@@ -172,14 +174,15 @@ sens0 %>% distinct(sensor_type_id) %>%
 #----------------#
 message('Loading tag data')
 
-coltypes <- fields %>% 
-  filter(table=='tag' & !is.na(field_type)) %>% 
-  pull('field_type') %>% paste(collapse="")
+tagFields <- fields %>% filter(table=='tag' & !is.na(type_raw))
 
-tag0 <- read_csv(file.path(.rawP,'tag.csv'),col_types=coltypes) #
+tag0 <- read_csv(file.path(.rawP,'tag.csv'),
+          col_types=paste(tagFields$type_raw,collapse="")) %>%
+  rename(!!!setNames(tagFields$name_raw,tagFields$name_clean))
 
 message('Found the following tag types:')
-tag0 %>% distinct(manufacturer_name) %>% arrange(manufacturer_name) %>% kable
+tag0 %>% distinct(manufacturer_name) %>% arrange(manufacturer_name) %>% 
+  kable %>% paste(collapse='\n') %>% message
 
 #View(tag0)
 
@@ -188,11 +191,11 @@ tag0 %>% distinct(manufacturer_name) %>% arrange(manufacturer_name) %>% kable
 #--------------------#
 message('Loading deployment data')
 
-coltypes <- fields %>% 
-  filter(table=='deployment' & !is.na(field_type)) %>% 
-  pull('field_type') %>% paste(collapse="")
+depFields <- fields %>% filter(table=='deployment' & !is.na(type_raw))
 
-dep0 <- read_csv(file.path(.rawP,'deployment.csv'),col_types=coltypes) #
+dep0 <- read_csv(file.path(.rawP,'deployment.csv'),
+                 col_types=paste(depFields$type_raw,collapse="")) %>%
+  rename(!!!setNames(depFields$name_raw,depFields$name_clean))
 
 #If I filtered out individuals (e.g. if individual was a human) need to remove the deployment
 #Then, remove any tags, sensors that don't have entries in deployment table
@@ -201,23 +204,27 @@ dep0 <- read_csv(file.path(.rawP,'deployment.csv'),col_types=coltypes) #
 
 #remove deployments for filtered individuals
 dep <- dep0 %>% inner_join(ind0 %>% select(individual_id), by='individual_id')
+
 if(nrow(dep0)-nrow(dep) > 0) {
   message(glue('Removed {nrow(dep0)-nrow(dep)} deployments for filtered individuals'))
 } 
 
 ind <- ind0 %>% inner_join(dep %>% distinct(individual_id),by='individual_id')
+
 if(nrow(ind0)-nrow(ind)) {
   message(glue('Removed {nrow(ind0)-nrow(ind)} undeployed individuals'))
 }
 
 #remove undeployed tags. Note must use distinct() on dep b/c can have multiple deployments
 tag <- tag0 %>% inner_join(dep %>% distinct(tag_id), by='tag_id')
+
 if(nrow(tag0)-nrow(tag)) {
   message(glue('Removed {nrow(tag0)-nrow(tag)} undeployed tags'))
 }
 
 #remove all sensors that are attached to undeployed tags
 sens <- sens0 %>% inner_join(tag %>% select(tag_id),by='tag_id')
+
 if(nrow(sens0)-nrow(sens) > 0) {
   message(glue('Removed {nrow(sens0)-nrow(sens)} undeployed sensors'))
 }
@@ -229,12 +236,9 @@ if(nrow(sens0)-nrow(sens) > 0) {
 #Seems all combinations of missing deploy on and deploy off fields occur and are valid
 # I have tested for NA, timestamp. but not NA, NA. Should work though.
 
-#should never have a deploy off without deploy on. the other three possibilities are valid
-#   invisible(assert_that(dep %>% filter(is.na(deploy_on_timestamp) & !is.na(deploy_off_timestamp)) %>% nrow == 0))  #should be 0
-
-#actually okay if both deploy on and deploy off are na, but this is rare. If it happens double check data.
-#need to include this case in the event table logic below
-#   invisible(assert_that(dep %>% filter(is.na(deploy_on_timestamp) & is.na(deploy_off_timestamp)) %>% nrow == 0))
+# This checks for deploy off with no deploy on. Bad practice but does occur so can't do this check.
+# Maybe move this to some sort of "health check" report
+#invisible(assert_that(dep %>% filter(is.na(deploy_on_timestamp) & !is.na(deploy_off_timestamp)) %>% nrow == 0))  #should be 0
 
 #Should never have a deployment that does not have a tag (I think this is what it does). 
 #Might not be true if a tag has multiple value deployments?
@@ -271,12 +275,16 @@ invisible(assert_that(!any(duplicated(sens$sensor_id))))
 
 message('Loading event data. This can take awhile...')
 
-coltypes <- fields %>% 
-  filter(table=='event' & !is.na(field_type)) %>% 
-  pull('field_type') %>% paste(collapse="")
+#Events are not loaded/renamed in the same way as other entities b/c there is not
+# a 1-to-1 mapping between fields.
 
-#Need to clean up text fields because rmovebankapi doesn't
-# do this when downloading directly to disk.
+coltypes <- fields %>% 
+  filter(table=='event' & !is.na(type_raw)) %>% 
+  pull('type_raw') %>% paste(collapse="")
+
+#Note rmoveapi doesn't clean out line breaks \r\n when downloading directly to disk
+#May need to address this issue in the future but there aren't any long text fields
+#in the event table right now
 
 evt0 <- read_csv(file.path(.rawP,'event.csv'),col_types=coltypes) %>%
   rename(lon=location_long,lat=location_lat)
@@ -323,22 +331,28 @@ message(glue('Filtered out {format(nrow(evt0)-nrow(evt),big.mark=",")} bad recor
 message('Starting deployment filtering')
 
 message('Found the following deploy on/off patterns')
+
 dep %>% mutate(
     na_dep_on=is.na(deploy_on_timestamp),
     na_dep_off=is.na(deploy_off_timestamp)) %>%
   distinct(na_dep_on,na_dep_off) %>%
   mutate(across(.fns=~ifelse(.,NA,'timestamp'))) %>%
-  arrange(na_dep_on,na_dep_off) %>% kable
+  arrange(na_dep_on,na_dep_off) %>% 
+  kable %>% paste(collapse='\n') %>% message
 
+#This should filter according to the cases above. 
+#TODO: need to test each case to make sure it works.
 evtdep <- evt %>% 
   inner_join(dep %>% 
     select(deployment_id,individual_id,tag_id,deploy_on_timestamp,deploy_off_timestamp),
     by=c('individual_id', 'tag_id')) %>%
   filter( 
-    ((timestamp >= deploy_on_timestamp) & (timestamp < deploy_off_timestamp | is.na(deploy_off_timestamp))) |
-    (is.na(deploy_on_timestamp) & (timestamp < deploy_off_timestamp | is.na(deploy_off_timestamp)))
+    (timestamp >= deploy_on_timestamp & timestamp < deploy_off_timestamp) | #case 1
+    (is.na(deploy_on_timestamp) & timestamp < deploy_off_timestamp) | #case 2
+    (timestamp >= deploy_on_timestamp & is.na(deploy_off_timestamp)) | #case 3
+    (is.na(deploy_on_timestamp) & is.na(deploy_off_timestamp)) #case 4
   )
-
+  
 invisible(assert_that(evtdep %>% filter(timestamp < deploy_on_timestamp) %>% nrow == 0)) #No cases where timestamp is < deploy on. Also covers case where deploy on is NA
 invisible(assert_that(evtdep %>% filter(timestamp > deploy_off_timestamp) %>% nrow == 0)) #No cases where timestamp is > deploy off. Also covers case where deploy off is NA.
 
@@ -346,8 +360,7 @@ message(glue('Filtered {format(nrow(evt) - nrow(evtdep),big.mark=",")} undeploye
 
 #TODO: check to make sure all event.tag_id exist in the tag table
 
-#TODO: this isn't true anymore!
-#TODO: All records with individual_id=NA should be filtered out
+#All records with individual_id=NA should be filtered out
 invisible(assert_that(evtdep %>% filter(is.na(individual_id)) %>% nrow == 0))
 
 #Make sure the same tag does not have duplicate sensor types (e.g. can't have two gps sensors on the same tag)
@@ -526,7 +539,34 @@ evtFinal <- evtnodup %>%
 #--- print summary ---#
 message(glue('Final num individuals: {nrow(ind)}, num events: {format(nrow(evtFinal),big.mark=",")}'))
 
-evtFinal %>% filter(individual_id==657665432)
+#------------------------#
+#---- Compare totals ----#
+#------------------------#
+
+message(
+'Compare final totals to what is reported by movebank.
+The totals should be similar but might not be exactly the same.
+The totals reported by the movebank api might even be different than the totals reported on the movebank web page.
+This might have to do with backend processes that are not updated on movebank yet.
+In all cases I have looked at the totals from the script seem to match the web page exactly.')
+
+mbstats <- std %>% 
+  select(
+    number_of_individuals,
+    number_of_deployments,
+    number_of_deployed_locations,
+    timestamp_first_deployed_location,
+    timestamp_last_deployed_location)
+
+cstats <- tibble(number_of_individuals=nrow(ind),
+       number_of_deployments=nrow(dep),
+       number_of_deployed_locations=nrow(evtFinal),
+       timestamp_first_deployed_location=min(evtFinal$timestamp),
+       timestamp_last_deployed_location=max(evtFinal$timestamp))
+
+bind_rows(mbstats,cstats) %>% t %>% as.data.frame %>% 
+  rename(Movebank=V1,Script=V2) %>% 
+  kable %>% paste(collapse='\n') %>% message
 
 #--------------------------------------#
 #---- Write out final data to csvs ----#
@@ -534,12 +574,11 @@ evtFinal %>% filter(individual_id==657665432)
 
 message('Saving data to csv files')
 
-#Just copy study.csv becuase we didn't do any cleaning
-invisible(file.copy(file.path(.rawP,'study.csv'),file.path(.outP,'study.csv')))
-write_csv(ind,file.path(.outP,'individual.csv'))
-write_csv(sens,file.path(.outP,'sensor.csv'))
-write_csv(tag,file.path(.outP,'tag.csv'))
-write_csv(dep,file.path(.outP,'deployment.csv'))
-write_csv(evtFinal,file.path(.outP,'event.csv'))
+write_csv(std,file.path(.outP,'study.csv'),na="")
+write_csv(ind,file.path(.outP,'individual.csv'),na="")
+write_csv(sens,file.path(.outP,'sensor.csv'),na="")
+write_csv(tag,file.path(.outP,'tag.csv'),na="")
+write_csv(dep,file.path(.outP,'deployment.csv'),na="")
+write_csv(evtFinal,file.path(.outP,'event.csv'),na="")
 
 message(glue('Script complete in {diffmin(t0)} minutes'))
