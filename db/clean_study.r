@@ -8,14 +8,14 @@ Clean all data for a study. Assumes data is available as csv files, formatted ac
 of get_study_data.r
 
 Usage:
-clean_study_data.r <studyid> [--raw=<raw>] [--out=<out>] [-t] [--seed=<seed>]
+clean_study_data.r <studyid> [--raw=<raw>] [--clean=<clean>] [-t] [--seed=<seed>]
 clean_study_data.r (-h | --help)
 
 Options:
 -h --help     Show this screen.
 -v --version     Show version.
--r --raw=<raw>  Folder containing raw data. See get_study_data.r. Defaults to <wd/data/studyid/raw>
--o --out=<out>         Output folder. Defaults to <wd/data/studyid/clean>
+-c --clean=<clean> Clean data will be placed in this directory. If not passed in or empty, defaults to <wd>/data/<studyid>/clean
+-r --raw=<raw> Directory containing raw data. If not passed in or empty, defaults to <wd>/data/<studyid>/raw
 -s --seed=<seed>  Random seed. Defaults to 5326 if not passed
 -t --test         Indicates script is a test run, will not save output parameters or commit to git
 ' -> doc
@@ -36,7 +36,7 @@ if(interactive()) {
   .studyid <- 631036041
 
   .rawP <- file.path(.wd,'data',.studyid,'raw')
-  .outP <- file.path(.wd,'data',.studyid,'clean')
+  .cleanP <- file.path(.wd,'data',.studyid,'clean')
   
 } else {
   suppressPackageStartupMessages({
@@ -53,20 +53,17 @@ if(interactive()) {
   
   .studyid <- as.integer(ag$studyid)
   
-  if(is.null(ag$raw)) {
+  if(length(ag$raw)==0) {
     .rawP <- file.path(.wd,'data',.studyid,'raw')
   } else {
-    .raw <- trimws(ag$raw)
-    .rawP <- ifelse(isAbsolute(.raw),.raw,file.path(.wd,.raw))
+    .rawP <- ifelse(isAbsolute(ag$raw),ag$raw,file.path(.wd,ag$raw))
   }
   
-  if(is.null(ag$out)) {
-    .outP <- file.path(.wd,'data',.studyid,'clean')
+  if(length(ag$clean)==0) {
+    .cleanP <- file.path(.wd,'data',.studyid,'clean')
   } else {
-    .out <- trimws(ag$out)
-    .outP <- ifelse(isAbsolute(.out),.out,file.path(.wd,.out))
+    .cleanP <- ifelse(isAbsolute(ag$clean),ag$clean,file.path(.wd,ag$clean))
   }
-  
 }
 
 #---- Initialize Environment ----#
@@ -91,9 +88,9 @@ output_column.POSIXct <- function(x) {
   format(x, "%Y-%m-%d %H:%M:%OS3", tz='UTC')
 }
 
-dir.create(.outP,showWarnings=FALSE,recursive=TRUE)
+dir.create(.cleanP,showWarnings=FALSE,recursive=TRUE)
 
-invisible(assert_that(dir.exists(.outP)))
+invisible(assert_that(dir.exists(.cleanP)))
 
 message(glue('Cleaning data for study {.studyid}'))
 
@@ -574,11 +571,11 @@ bind_rows(mbstats,cstats) %>% t %>% as.data.frame %>%
 
 message('Saving data to csv files')
 
-write_csv(std,file.path(.outP,'study.csv'),na="")
-write_csv(ind,file.path(.outP,'individual.csv'),na="")
-write_csv(sens,file.path(.outP,'sensor.csv'),na="")
-write_csv(tag,file.path(.outP,'tag.csv'),na="")
-write_csv(dep,file.path(.outP,'deployment.csv'),na="")
-write_csv(evtFinal,file.path(.outP,'event.csv'),na="")
+write_csv(std,file.path(.cleanP,'study.csv'),na="")
+write_csv(ind,file.path(.cleanP,'individual.csv'),na="")
+write_csv(sens,file.path(.cleanP,'sensor.csv'),na="")
+write_csv(tag,file.path(.cleanP,'tag.csv'),na="")
+write_csv(dep,file.path(.cleanP,'deployment.csv'),na="")
+write_csv(evtFinal,file.path(.cleanP,'event.csv'),na="")
 
 message(glue('Script complete in {diffmin(t0)} minutes'))

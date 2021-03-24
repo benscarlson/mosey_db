@@ -1,21 +1,26 @@
 #!/usr/bin/env Rscript --vanilla
 
 '
-Makes sure study imported correctly by checking row counts 
-between csv files and database tables
+Makes sure study imported correctly
+Compares row counts between <clean>/*.csv and the corresponding tables <db>.
 
 Usage:
-validate_import.r <studyid> [--dat=<dat>] [-t] [--seed=<seed>]
+validate_import.r <studyid> [--clean=<clean>] [--db=<db>] [-t] [--seed=<seed>]
 script_template (-h | --help)
 
 Options:
 -h --help     Show this screen.
 -v --version     Show version.
--d --dat=<dat>  Folder containing the data to load. Defaults to <wd>/data/<studyid>/clean
+-c --clean=<clean>  Parent folder of the directory with the clean data that was imported into the database. Defaults to <wd>/data/<studyid>
+-d --db=<db> Data in the <clean> directory will be imported into the database at <db>. Defaults to <wd>/data/move.db
 -s --seed=<seed>  Random seed. Defaults to 5326 if not passed
 -t --test         Indicates script is a test run, will not save output parameters or commit to git
 -e --eda         Indicates eda mode, plots with additional info
 ' -> doc
+
+isAbsolute <- function(path) {
+  grepl("^(/|[A-Za-z]:|\\\\|~)", path)
+}
 
 #---- Input Parameters ----#
 if(interactive()) {
@@ -45,11 +50,17 @@ if(interactive()) {
   
   .studyid <- as.integer(ag$studyid)
   
-  if(is.null(ag$dat)) {
-    .datP <- file.path(.wd,'data',.studyid,'clean')
+  if(length(ag$db)==0) {
+    .dbPF <- file.path(.wd,'data','move.db')
   } else {
-    .datP <- trimws(ag$dat)
-    .datP <- ifelse(isAbsolute(.dat),.dat,file.path(.wd,.dat))
+    .dbPF <- ag$db
+  }
+  
+  if(length(ag$clean)==0) {
+    invisible(stopifnot(length(.studyid)>0))
+    .cleanP <- file.path(.wd,'data',.studyid,'clean')
+  } else {
+    .cleanP <- ifelse(isAbsolute(ag$clean),ag$clean,file.path(.wd,ag$clean))
   }
 }
 
@@ -73,7 +84,6 @@ list.files(rd('src/funs/auto'),full.names=TRUE) %>%
   walk(source)
 
 #---- Local parameters ----#
-.dbPF <- file.path(.wd,'data/movebank.db')
 
 #---- Initialize database ----#
 db <- dbConnect(RSQLite::SQLite(), .dbPF)
@@ -120,7 +130,7 @@ res <- tibble(tname=c('deployment','event','individual','sensor','study','tag'),
   mutate(
     q=map_chr(q,glue),
     file_n=map_dbl(tname,~{
-      fn <- file.path(.datP,glue('{.}.csv')) %>% path.expand
+      fn <- file.path(.cleanP,glue('{.}.csv')) %>% path.expand
       as.integer(system(glue('wc -l < "{fn}"'),intern=TRUE)) - 1
     }),
     db_n=map_dbl(q,~{dbGetQuery(db, .)[1,1]}),

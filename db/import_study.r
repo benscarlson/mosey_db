@@ -4,19 +4,24 @@
 Load cleaned movebank data from csv to database. Need to pass in either a studyid or the path to the data to load.
 
 Usage:
-load_study.r [--studyid=<studyid>] [--dat=<dat>] [--seed=<seed>] [-t] [-b]
+load_study.r [--studyid=<studyid>] [--clean=<clean>] [--db=<db>] [--seed=<seed>] [-t] [-b]
 load_study.r (-h | --help)
 
 Options:
 -h --help     Show this screen.
 -v --version     Show version.
--i --studyid=<studyid>  The study id of the data to load. If not passed in, need to supply <dat>
--d --dat=<dat>  Folder containing the data to load. Defaults to <wd>/data/<studyid>/clean
+-i --studyid=<studyid>  The study id of the data to load. If passed in, data comes from <wd>/data/<studyid>/clean
+-c --clean=<clean>  Directory containing the clean csv files. If not passed in, need to suppy studyid.
+-d --db=<db> Data in the <clean> directory will be imported into the database at <db>. Defaults to <wd>/data/move.db
 -s --seed=<seed>  Random seed. Defaults to 5326 if not passed
 -t --test         Indicates script is a test run, will not save output parameters or commit to git
 -b --rollback   Rollback the transaction before exiting the script.
 
 ' -> doc
+
+isAbsolute <- function(path) {
+  grepl("^(/|[A-Za-z]:|\\\\|~)", path)
+}
 
 #---- Parameters ----#
 
@@ -30,7 +35,8 @@ if(interactive()) {
   rd <- here
   
   .studyid <- 631036041
-  .datP <- .outP <- file.path(.wd,'data',.studyid,'clean')
+  .dbPF <- file.path(.wd,'data/move.db')
+  .cleanP <- .outP <- file.path(.wd,'data',.studyid,'clean')
 } else {
   suppressPackageStartupMessages({
     library(docopt)
@@ -49,11 +55,17 @@ if(interactive()) {
   
   .studyid <- as.integer(ag$studyid)
 
-  if(is.null(ag$dat)) {
-    .datP <- file.path(.wd,'data',.studyid,'clean')
+  if(length(ag$db)==0) {
+    .dbPF <- file.path(.wd,'data','move.db')
   } else {
-    .datP <- trimws(ag$dat)
-    .datP <- ifelse(isAbsolute(.dat),.dat,file.path(.wd,.dat))
+    .dbPF <- ag$db
+  }
+  
+  if(length(ag$clean)==0) {
+    invisible(stopifnot(length(.studyid)>0))
+    .cleanP <- file.path(.wd,'data',.studyid,'clean')
+  } else {
+    .cleanP <- ifelse(isAbsolute(ag$clean),ag$clean,file.path(.wd,ag$clean))
   }
 }
 
@@ -79,9 +91,6 @@ list.files(rd('src/funs/auto'),full.names=TRUE) %>%
 
 #---- Local parameters ----#
 
-#Can make this a parameter in the future
-.dbPF <- file.path(.wd,'data/movebank.db')
-
 #---- Initialize database ----#
 db <- DBI::dbConnect(RSQLite::SQLite(), .dbPF)
 invisible(assert_that(length(dbListTables(db))>0))
@@ -99,7 +108,7 @@ loadInsert <- function(entity,fields) {
     filter(table==entity & !is.na(type_clean)) %>% 
     pull('type_clean') %>% paste(collapse="")
   
-  dat <- read_csv(file.path(.datP,glue('{entity}.csv')),col_type=coltypes)
+  dat <- read_csv(file.path(.cleanP,glue('{entity}.csv')),col_type=coltypes)
   
   rows <- dat %>% 
     mutate_if(is.POSIXct,movebankTs) %>%

@@ -74,7 +74,7 @@ indtb %>% group_by(study_id) %>% summarize(num=n())
 
 evttb %>% 
   inner_join(indtb,by='individual_id') %>% 
-  filter(study_id==954787575) %>% 
+  filter(study_id==12345) %>% 
   group_by(individual_id) %>%
   summarize(num=n())
 ````
@@ -85,7 +85,7 @@ evttb %>%
   from event e 
   inner join individual i
   on e.individual_id = i.individual_id
-  where study_id = 954787575
+  where study_id = 12345
   group by i.individual_id' %>%
   dbGetQuery(db,.)
 ````
@@ -96,7 +96,7 @@ Joining to a really large event table can take a long time. An alternative way t
 'select individual_id, count(*) as num
   from event e 
   where individual_id in (
-    select individual_id from individual where study_id = 954787575
+    select individual_id from individual where study_id = 12345
   )
   group by individual_id' %>%
   dbGetQuery(db,.)
@@ -141,6 +141,8 @@ evttb %>%
 ## Create and populate a new movebankdb
 
 ### Create a new database
+
+TODO: This should be updated.
 
 You can create a new database by running the script `src/db/create_db.sql` from the command line.
 

@@ -4,10 +4,11 @@
 Delete study
 
 Usage:
-delete_study.r <studyid>
+delete_study.r <studyid> [--db=<db>] 
 delete_study.r (-h | --help)
 
 Options:
+-d --db=<db> Location of database. Defaults to <wd>/data/move.db
 -h --help     Show this screen.
 -v --version     Show version.
 
@@ -36,6 +37,12 @@ if(interactive()) {
   rd <- is_rstudio_project$make_fix_file(.script)
   
   .studyid <- as.integer(ag$studyid)
+  
+  if(length(ag$db)==0) {
+    .dbPF <- file.path(.wd,'data','move.db')
+  } else {
+    .dbPF <- ag$db
+  }
 }
 
 #---- Initialize Environment ----#
@@ -58,9 +65,9 @@ list.files(rd('src/funs/auto'),full.names=TRUE) %>%
   walk(source)
 
 #---- Local parameters ----#
-.dbPF <- file.path(.wd,'data/movebank.db')
 
 #---- Load data ----#
+invisible(assert_that(file.exists(.dbPF)))
 
 db <- dbConnect(RSQLite::SQLite(), .dbPF)
 

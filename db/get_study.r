@@ -2,18 +2,21 @@
 
 #TODO: if script fails, remove download folder?
 #TODO: now that I'm requesting all entities in a standard way I could use a function
+#       to download data.
+#TODO: since I'm now saving just the raw files, I can save directly to disk using rmoveapi
+#       I'll just need to replace all \r\n with "" because direct save does not do this.
 
 '
 Get and clean all data for a study from movebank api
 
 Usage:
-get_study_data.r <studyid> [--out=<out>] [-t] [--auth=<auth>] [--seed=<seed>]
+get_study_data.r <studyid> [--raw=<raw>] [-t] [--auth=<auth>] [--seed=<seed>]
 get_study_data.r (-h | --help)
 
 Options:
 -h --help     Show this screen.
 -v --version     Show version.
--o --out=<out>  Output folder. Defaults to <wd/data/studyid/raw>
+-r --raw=<raw>  Directory for saving csv files. Defaults to <wd>/data/<studyid>/raw.
 -a --auth=<auth>  Authentication method. Can be password, keyring, or path to yml file. Default is keyring.
 -s --seed=<seed>  Random seed. Defaults to 5326 if not passed
 -t --test         Indicates script is a test run, will not save output parameters or commit to git
@@ -27,7 +30,6 @@ isAbsolute <- function(path) {
 if(interactive()) {
   library(here)
   
-  #.wd <- '~/projects/covid/analysis/movebankdb'
   .wd <- '~/projects/movedb/analysis/test_get_clean'
   .seed <- NULL
   .test <- TRUE
@@ -35,9 +37,7 @@ if(interactive()) {
 
   .studyid <- 631036041
   .auth <- NULL
-  #.out <- "/Volumes/WD4TB/projects/covid/data"
-  #.out <- 'test'
-  .outP <- file.path(.wd,'data',.studyid,'raw')
+  .rawP <- file.path(.wd,'data',.studyid,'raw')
   
 } else {
   suppressPackageStartupMessages({
@@ -55,11 +55,10 @@ if(interactive()) {
   .auth <- ag$auth
   .studyid <- as.integer(ag$studyid)
   
-  if(is.null(ag$out)) {
-    .outP <- file.path(.wd,'data',.studyid,'raw')
+  if(length(ag$raw)==0) {
+    .rawP <- file.path(.wd,'data',.studyid,'raw')
   } else {
-    .out <- trimws(ag$out)
-    .outP <- ifelse(isAbsolute(.out),.out,file.path(.wd,.out))
+    .rawP <- ifelse(isAbsolute(ag$raw),ag$raw,file.path(.wd,ag$raw))
   }
 
 }
@@ -107,9 +106,9 @@ if(is.null(.auth) || grepl('.*\\.yml$',.auth)) {
   stop('Invalid authentication method')
 }
 
-dir.create(.outP,showWarnings=FALSE,recursive=TRUE)
+dir.create(.rawP,showWarnings=FALSE,recursive=TRUE)
 
-invisible(assert_that(dir.exists(.outP)))
+invisible(assert_that(dir.exists(.rawP)))
 
 #---- Load data ----#
 
@@ -186,7 +185,7 @@ message('Getting GPS (653) event data. This can take awhile...')
 attributes <- fields %>% filter(table=='event' & !is.na(name_raw)) %>% pull('name_raw')
 
 tic()
-status <- getEvent(.studyid,attributes,sensor_type_id=653,save_as=file.path(.outP,'event.csv'))
+status <- getEvent(.studyid,attributes,sensor_type_id=653,save_as=file.path(.rawP,'event.csv'))
 toc()
 
 invisible(assert_that(status))
@@ -198,10 +197,10 @@ invisible(assert_that(status))
 message('Saving data to csv files')
 
 #Event data was saved directly to disk
-write_csv(std,file.path(.outP,'study.csv'),na="")
-write_csv(ind,file.path(.outP,'individual.csv'),na="")
-write_csv(sens,file.path(.outP,'sensor.csv'),na="")
-write_csv(tag,file.path(.outP,'tag.csv'),na="")
-write_csv(dep,file.path(.outP,'deployment.csv'),na="")
+write_csv(std,file.path(.rawP,'study.csv'),na="")
+write_csv(ind,file.path(.rawP,'individual.csv'),na="")
+write_csv(sens,file.path(.rawP,'sensor.csv'),na="")
+write_csv(tag,file.path(.rawP,'tag.csv'),na="")
+write_csv(dep,file.path(.rawP,'deployment.csv'),na="")
 
 message(glue('Script complete in {diffmin(t0)} minutes'))
