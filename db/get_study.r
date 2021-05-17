@@ -10,8 +10,8 @@
 Get and clean all data for a study from movebank api
 
 Usage:
-get_study_data.r <studyid> [--raw=<raw>] [-t] [--auth=<auth>] [--seed=<seed>]
-get_study_data.r (-h | --help)
+get_study.r <studyid> [--raw=<raw>] [-t] [--auth=<auth>] [--seed=<seed>]
+get_study.r (-h | --help)
 
 Options:
 -h --help     Show this screen.
@@ -30,12 +30,12 @@ isAbsolute <- function(path) {
 if(interactive()) {
   library(here)
   
-  .wd <- '~/projects/movedb/analysis/test_get_clean'
+  .wd <- '~/projects/movedb/analysis/test'
   .seed <- NULL
   .test <- TRUE
   rd <- here
 
-  .studyid <- 631036041
+  .studyid <- 2988357
   .auth <- NULL
   .rawP <- file.path(.wd,'data',.studyid,'raw')
   
@@ -122,6 +122,8 @@ message(glue('Downloading data for study {.studyid} from movebank'))
 message('Getting study data')
 
 attributes <- fields %>% filter(table=='study' & !is.na(name_raw)) %>% pull('name_raw')
+
+getStudy(.studyid,params=list(attributes=attributes),urlonly=TRUE)
 
 std <- getStudy(.studyid,params=list(attributes=attributes)) #%>% 
   #rename(study_id=id,study_name=name) 

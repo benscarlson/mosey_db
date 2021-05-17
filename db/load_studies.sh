@@ -59,11 +59,6 @@ do
   echo "Start processing study ${studyId}"
   echo "*******"
   
-  #seems newline character is in studyId. Causes load_status file to have line breaks.
-  # Attempt to remove it.
-  #https://unix.stackexchange.com/questions/57124/remove-newline-from-unix-variable/57128
-  
-
   #Reading study ids from csv results in \r at end. This removes them.
   studyId=${studyId%$'\r'}
   
@@ -76,8 +71,12 @@ do
   
   echo "Downloading study ${studyId}"
   $MOVEDB_SRC/db/get_study.r $studyId -r $raw -t 2>&1 | tee logs/$studyid.log
+  exitcode=("${PIPESTATUS[@]}")
+
+  #See here for info on how to store: https://www.mydbaworld.com/retrieve-return-code-all-commands-pipeline-pipestatus/
+  #Since we used tee, $? contains a successful exit code
   
-  if [ $? -eq 0 ]; then
+  if [ ${exitcode[0]} -eq 0 ]; then
     echo "Successfully downloaded study"
     echo $studyId,download,success >> $status
   else
@@ -86,13 +85,15 @@ do
     continue
   fi
   
+  exit
   #---------------#
   #---- Clean ----#
   #---------------#
   echo "Cleaning study ${studyId}"
   $MOVEDB_SRC/db/clean_study.r ${studyId} -c $clean -r $raw -t 2>&1 | tee -a logs/$studyid.log
-    
-  if [ $? -eq 0 ]; then
+  exitcode=("${PIPESTATUS[@]}")
+  
+  if [ ${exitcode[0]} -eq 0 ]; then
     echo "Successfully cleaned study"
     echo $studyId,clean,success >> $status
   else
@@ -106,9 +107,10 @@ do
   #---------------#
   echo "Importing study ${studyId}"
   $MOVEDB_SRC/db/import_study.r -i ${studyId} -c $clean -t 2>&1 | tee -a logs/$studyid.log
-  
+  exitcode=("${PIPESTATUS[@]}")
+    
   #Attempted to insert a study that was already there. Script failed but $? -eq 0 was true
-  if [ $? -eq 0 ]; then
+  if [ ${exitcode[0]} -eq 0 ]; then
     echo "Successfully imported data"
     echo $studyId,import,success >> $status
   else
@@ -122,8 +124,9 @@ do
   #------------------#
   echo "Validating import for study ${studyId}"
   $MOVEDB_SRC/db/validate_import.r ${studyId} -c $clean -t 2>&1 | tee -a logs/$studyid.log
-    
-  if [ $? -eq 0 ]; then
+  exitcode=("${PIPESTATUS[@]}")
+  
+  if [ ${exitcode[0]} -eq 0 ]; then
     echo "Successfully validated import"
     echo $studyId,validate,success >> $status
   else
