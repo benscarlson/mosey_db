@@ -11,7 +11,7 @@ library(dplyr)
 library(RSQLite)
 
 .wd <- '~/projects/mycoolproject/analysis'
-.dbPF <- file.path(.wd,'data/movebank.db')
+.dbPF <- file.path(.wd,'data/move.db')
 
 db <- DBI::dbConnect(RSQLite::SQLite(), .dbPF)
 
