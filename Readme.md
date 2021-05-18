@@ -27,60 +27,60 @@ Each example below shows you how to run a query on the database using dplyr, and
 ### Get get info on all studies in the database
 
 #### dplyr
-````{r}
+```r
 stdtb %>% select(study_id,study_name) %>% as_tibble
-````
+```
 
 #### sql
-````{r}
+```r
 'select study_id, study_name from study' %>%
   dbGetQuery(db,.)
-````
+```
 
 ### How many individuals are in the database?
 
 Note the differences between these two approaches. The first pulls all data into R and then counts the rows. The second counts the rows in the database and just returns a single number.
 
 #### dplyr
-````{r}
+```r
 indtb %>% as_tibble %>% nrow
-````
+```
 
 #### sql
-````{r}
+```r
 'select count(*) as num from individual' %>%
   dbGetQuery(db,.)
-````
+```
 
 ### How many individuals per study?
 
 #### dplyr
-````{r}
+```r
 indtb %>% group_by(study_id) %>% summarize(num=n())
-````
+```
 
 #### sql
-````{r}  
+```r
 'select study_id, count(*) as num 
   from individual 
   group by study_id' %>%
   dbGetQuery(db,.)
-````
+```
 
 ### How many locations per individual, for a particular study?
 
 #### dplyr
-````{r}
+```r
 
 evttb %>% 
   inner_join(indtb,by='individual_id') %>% 
   filter(study_id==12345) %>% 
   group_by(individual_id) %>%
   summarize(num=n())
-````
+```
 
 #### sql
-````{r}
+```r
 'select i.individual_id, count(*) as num
   from event e 
   inner join individual i
@@ -88,11 +88,11 @@ evttb %>%
   where study_id = 12345
   group by i.individual_id' %>%
   dbGetQuery(db,.)
-````
+```
 
 Joining to a really large event table can take a long time. An alternative way to run this query is to use an sql subquery. I dont think this approach is possible using dplyr.
 
-````{r}
+```r
 'select individual_id, count(*) as num
   from event e 
   where individual_id in (
@@ -101,42 +101,42 @@ Joining to a really large event table can take a long time. An alternative way t
   group by individual_id' %>%
   dbGetQuery(db,.)
 
-````
+```
 
 ### Find start and end dates, per project
 
 #### dplyr
-````{r}
+```r
 evttb %>% 
   inner_join(indtb,by='individual_id') %>% 
   group_by(study_id) %>%
   summarize(min=min(timestamp), max=(timestamp))
-````
+```
 
 #### sql
-````{r}
+```r
 'select i.individual_id, min(timestamp) as min, max(timestamp) as max
   from event e 
   inner join individual i
   on e.individual_id = i.individual_id
   group by i.study_id' %>%
   dbGetQuery(db,.)
-````
+```
 
 ### Get all data between start and end dates, for all projects
 
 #### dplyr
-````{r}
+```r
 evttb %>% 
   filter(between(timestamp,'2019-09-01','2019-10-01'))
-````
+```
 
 #### sql
-````{r}
+```r
 'select * from event 
   where timestamp between "2019-09-01" and "2019-10-01"' %>%
   dbGetQuery(db,.)
-````
+```
 
 ## Create and populate a new movebankdb
 
