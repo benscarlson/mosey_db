@@ -15,7 +15,7 @@ library(RSQLite)
 
 db <- DBI::dbConnect(RSQLite::SQLite(), .dbPF)
 
-invisible(assert_that(length(dbListTables(db))>0)) # Ensure that you have loaded the database correctly
+invisible(assert_that(length(dbListTables(db))>0))
 
 stdtb <- tbl(db,'study')
 indtb <- tbl(db,'individual')
@@ -187,7 +187,7 @@ $MOVEDB_SRC/db/load_studies.sh
 You can specify a different directory to hold the raw and clean csvs (e.g. an external disk)
 
 ```bash
-csvdir=/Volumes/WD4TB/projects/covid/analysis/movedb/csvs
+csvdir=/Volumes/WD4TB/projects/myproj/analysis/movedb/csvs
 $MOVEDB_SRC/db/load_studies.sh $csvdir
 ```
 
