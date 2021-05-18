@@ -24,7 +24,7 @@ evttb <- tbl(db,'event')
 
 Each example below shows you how to run a query on the database using dplyr, and the equivilent syntax using sql.
 
-### Get get info on all studies in the database
+### Get info on all studies in the database
 
 #### dplyr
 ```r
