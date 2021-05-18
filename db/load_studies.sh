@@ -13,10 +13,9 @@ load_datasets 0.1
 EOF
 )"
 
-#TODO: change the name to something else?
 #TODO: remove some of the hard-coded paths, such as the name of the database.
 #TODO: pass in the path to the database.
-#TODO: I should not pass in src, seems strange. Maybe I should have a MOVEDB_SRC env variable?
+
 #----
 #---- Set up variables
 #----
@@ -45,9 +44,6 @@ csvdir=${argv[0]}
 # Use miller to filter by run column and then take the study_id field
 # need to use tail to remove first line, which is the header
 studyIds=($(mlr --csv --opprint filter '$run == 1' then cut -f study_id ctfs/study.csv | tail -n +2))
-#echo ${#studyIds[@]} #number of items in array
-#echo ${studyIds[@]} #for some reason this is not printing all items
-
 
 status=load_status.csv
 
@@ -85,7 +81,6 @@ do
     continue
   fi
   
-  exit
   #---------------#
   #---- Clean ----#
   #---------------#
