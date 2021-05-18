@@ -5,7 +5,7 @@
 
 This section assumes you have a movedb sqlite file. See below if you want to create and populate a new database.
 
-````{r}
+```r
 library(DBI)
 library(dplyr)
 library(RSQLite)
@@ -20,7 +20,7 @@ invisible(assert_that(length(dbListTables(db))>0)) # Ensure that you have loaded
 stdtb <- tbl(db,'study')
 indtb <- tbl(db,'individual')
 evttb <- tbl(db,'event')
-````
+```
 
 Each example below shows you how to run a query on the database using dplyr, and the equivilent syntax using sql.
 
