@@ -7,14 +7,14 @@ Usage: load_datasets.sh [options] <argv>...
 Options:
       --help     Show help options.
       --version  Print program version.
+      --db=<db>  Path to database
 ----
 load_datasets 0.1
 
 EOF
 )"
 
-#TODO: remove some of the hard-coded paths, such as the name of the database.
-#TODO: pass in the path to the database.
+#TODO: Need to echo to the log file as well as stdout. Maybe use tee as well?
 
 #----
 #---- Set up variables
@@ -66,12 +66,12 @@ do
   #------------------#
   
   echo "Downloading study ${studyId}"
-  $MOVEDB_SRC/db/get_study.r $studyId -r $raw -t 2>&1 | tee logs/$studyid.log
+  $MOVEDB_SRC/db/get_study.r $studyId -r $raw -t 2>&1 | tee logs/$studyId.log
   exitcode=("${PIPESTATUS[@]}")
 
   #See here for info on how to store: https://www.mydbaworld.com/retrieve-return-code-all-commands-pipeline-pipestatus/
   #Since we used tee, $? contains a successful exit code
-  
+
   if [ ${exitcode[0]} -eq 0 ]; then
     echo "Successfully downloaded study"
     echo $studyId,download,success >> $status
@@ -85,9 +85,9 @@ do
   #---- Clean ----#
   #---------------#
   echo "Cleaning study ${studyId}"
-  $MOVEDB_SRC/db/clean_study.r ${studyId} -c $clean -r $raw -t 2>&1 | tee -a logs/$studyid.log
+  $MOVEDB_SRC/db/clean_study.r ${studyId} -c $clean -r $raw -t 2>&1 | tee -a logs/$studyId.log
   exitcode=("${PIPESTATUS[@]}")
-  
+
   if [ ${exitcode[0]} -eq 0 ]; then
     echo "Successfully cleaned study"
     echo $studyId,clean,success >> $status
@@ -96,15 +96,20 @@ do
     echo $studyId,clean,fail >> $status
     continue
   fi
-  
+
   #---------------#
   #---- Import ---#
   #---------------#
+  
+  #Put relevant optional parameters into an array
+  params=()
+  [[ ! -z "$db" ]] && params+=("-d $db")
+
   echo "Importing study ${studyId}"
-  $MOVEDB_SRC/db/import_study.r -i ${studyId} -c $clean -t 2>&1 | tee -a logs/$studyid.log
+  $MOVEDB_SRC/db/import_study.r -i ${studyId} -c $clean "${params[@]}" -t 2>&1 | tee -a logs/$studyId.log
+
   exitcode=("${PIPESTATUS[@]}")
-    
-  #Attempted to insert a study that was already there. Script failed but $? -eq 0 was true
+
   if [ ${exitcode[0]} -eq 0 ]; then
     echo "Successfully imported data"
     echo $studyId,import,success >> $status
@@ -113,12 +118,17 @@ do
     echo $studyId,import,fail >> $status
     continue
   fi
-  
+
   #------------------#
   #---- Validate ----#
   #------------------#
   echo "Validating import for study ${studyId}"
-  $MOVEDB_SRC/db/validate_import.r ${studyId} -c $clean -t 2>&1 | tee -a logs/$studyid.log
+  
+  params=()
+  [[ ! -z "$db" ]] && params+=("-d $db")
+  
+  $MOVEDB_SRC/db/validate_import.r ${studyId} -c $clean "${params[@]}" -t 2>&1 | tee -a logs/$studyId.log
+
   exitcode=("${PIPESTATUS[@]}")
   
   if [ ${exitcode[0]} -eq 0 ]; then

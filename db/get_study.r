@@ -123,8 +123,6 @@ message('Getting study data')
 
 attributes <- fields %>% filter(table=='study' & !is.na(name_raw)) %>% pull('name_raw')
 
-getStudy(.studyid,params=list(attributes=attributes),urlonly=TRUE)
-
 std <- getStudy(.studyid,params=list(attributes=attributes)) #%>% 
   #rename(study_id=id,study_name=name) 
 

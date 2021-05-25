@@ -53,7 +53,7 @@ if(interactive()) {
   if(length(ag$db)==0) {
     .dbPF <- file.path(.wd,'data','move.db')
   } else {
-    .dbPF <- ag$db
+    .dbPF <- trimws(ag$db)
   }
   
   if(length(ag$clean)==0) {
@@ -86,6 +86,7 @@ list.files(rd('src/funs/auto'),full.names=TRUE) %>%
 #---- Local parameters ----#
 
 #---- Initialize database ----#
+invisible(assert_that(file.exists(.dbPF)))
 db <- dbConnect(RSQLite::SQLite(), .dbPF)
 invisible(assert_that(length(dbListTables(db))>0))
 

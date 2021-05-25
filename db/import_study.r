@@ -4,8 +4,8 @@
 Load cleaned movebank data from csv to database. Need to pass in either a studyid or the path to the data to load.
 
 Usage:
-load_study.r [--studyid=<studyid>] [--clean=<clean>] [--db=<db>] [--seed=<seed>] [-t] [-b]
-load_study.r (-h | --help)
+import_study.r [--studyid=<studyid>] [--clean=<clean>] [--db=<db>] [--seed=<seed>] [-t] [-b]
+import_study.r (-h | --help)
 
 Options:
 -h --help     Show this screen.
@@ -58,7 +58,7 @@ if(interactive()) {
   if(length(ag$db)==0) {
     .dbPF <- file.path(.wd,'data','move.db')
   } else {
-    .dbPF <- ag$db
+    .dbPF <- trimws(ag$db)
   }
   
   if(length(ag$clean)==0) {
@@ -92,6 +92,7 @@ list.files(rd('src/funs/auto'),full.names=TRUE) %>%
 #---- Local parameters ----#
 
 #---- Initialize database ----#
+invisible(assert_that(file.exists(.dbPF)))
 db <- DBI::dbConnect(RSQLite::SQLite(), .dbPF)
 invisible(assert_that(length(dbListTables(db))>0))
 
@@ -118,6 +119,7 @@ loadInsert <- function(entity,fields) {
 #---------------------#
 #---- Main script ----#
 #---------------------#
+message('Importing data...')
 
 invisible(dbExecute(db,'PRAGMA foreign_keys=ON'))
 
