@@ -7,7 +7,8 @@ Usage: load_datasets.sh [options] <argv>...
 Options:
       --help     Show help options.
       --version  Print program version.
-      --db=<db>  Path to database
+      --db=<db>  Path to database. Default is data/move.db
+      --process=<process> Character string specifying which steps to process. Defaults to dciv. (download, clean, import, validate)
 ----
 load_datasets 0.1
 
@@ -15,6 +16,10 @@ EOF
 )"
 
 #TODO: Need to echo to the log file as well as stdout. Maybe use tee as well?
+#TODO: should have a way to selectively process certain steps. E.g., don't run download since we've already downloaded the data.
+# Interface might be to have an optional 'process' flag where you send in the string dciv (download, clean, import, validate)
+# which says which processes to run so to skip download, you send in --process civ. if not passed in, default to dciv
+#TODO: make csvdir optional, just like db
 
 #----
 #---- Set up variables
@@ -31,6 +36,7 @@ csvdir=${argv[0]}
 #raw=${argv[0]}
 #clean=${argv[0]}
 #db=${argv[1]}
+[[ -z "$process" ]] && process=dciv
 
 #-----------------------#
 #---- Load datasets ----#
@@ -65,36 +71,40 @@ do
   #---- Download ----#
   #------------------#
   
-  echo "Downloading study ${studyId}"
-  $MOVEDB_SRC/db/get_study.r $studyId -r $raw -t 2>&1 | tee logs/$studyId.log
-  exitcode=("${PIPESTATUS[@]}")
+  if [[ "$process" = *d* ]]; then
+    echo "Downloading study ${studyId}"
+    $MOVEDB_SRC/db/get_study.r $studyId -r $raw -t 2>&1 | tee logs/$studyId.log
+    exitcode=("${PIPESTATUS[@]}")
 
-  #See here for info on how to store: https://www.mydbaworld.com/retrieve-return-code-all-commands-pipeline-pipestatus/
-  #Since we used tee, $? contains a successful exit code
+    #See here for info on how to store: https://www.mydbaworld.com/retrieve-return-code-all-commands-pipeline-pipestatus/
+    #Since we used tee, $? contains a successful exit code
 
-  if [ ${exitcode[0]} -eq 0 ]; then
-    echo "Successfully downloaded study"
-    echo $studyId,download,success >> $status
-  else
-    echo "Failed to download study ${studyId}"
-    echo $studyId,download,fail >> $status
-    continue
+    if [ ${exitcode[0]} -eq 0 ]; then
+      echo "Successfully downloaded study"
+      echo $studyId,download,success >> $status
+    else
+      echo "Failed to download study ${studyId}"
+      echo $studyId,download,fail >> $status
+      continue
+    fi
   fi
-  
+
   #---------------#
   #---- Clean ----#
   #---------------#
-  echo "Cleaning study ${studyId}"
-  $MOVEDB_SRC/db/clean_study.r ${studyId} -c $clean -r $raw -t 2>&1 | tee -a logs/$studyId.log
-  exitcode=("${PIPESTATUS[@]}")
-
-  if [ ${exitcode[0]} -eq 0 ]; then
-    echo "Successfully cleaned study"
-    echo $studyId,clean,success >> $status
-  else
-    echo "Failed to download data for study ${studyId}"
-    echo $studyId,clean,fail >> $status
-    continue
+  if [[ "$process" = *c* ]]; then
+    echo "Cleaning study ${studyId}"
+    $MOVEDB_SRC/db/clean_study.r ${studyId} -c $clean -r $raw -t 2>&1 | tee -a logs/$studyId.log
+    exitcode=("${PIPESTATUS[@]}")
+  
+    if [ ${exitcode[0]} -eq 0 ]; then
+      echo "Successfully cleaned study"
+      echo $studyId,clean,success >> $status
+    else
+      echo "Failed to download data for study ${studyId}"
+      echo $studyId,clean,fail >> $status
+      continue
+    fi
   fi
 
   #---------------#
@@ -102,44 +112,47 @@ do
   #---------------#
   
   #Put relevant optional parameters into an array
-  params=()
-  [[ ! -z "$db" ]] && params+=("-d $db")
-
-  echo "Importing study ${studyId}"
-  $MOVEDB_SRC/db/import_study.r -i ${studyId} -c $clean "${params[@]}" -t 2>&1 | tee -a logs/$studyId.log
-
-  exitcode=("${PIPESTATUS[@]}")
-
-  if [ ${exitcode[0]} -eq 0 ]; then
-    echo "Successfully imported data"
-    echo $studyId,import,success >> $status
-  else
-    echo "Failed to import study ${studyId}"
-    echo $studyId,import,fail >> $status
-    continue
+  if [[ "$process" = *i* ]]; then
+    params=()
+    [[ ! -z "$db" ]] && params+=("-d $db")
+  
+    echo "Importing study ${studyId}"
+    $MOVEDB_SRC/db/import_study.r -i ${studyId} -c $clean "${params[@]}" -t 2>&1 | tee -a logs/$studyId.log
+  
+    exitcode=("${PIPESTATUS[@]}")
+  
+    if [ ${exitcode[0]} -eq 0 ]; then
+      echo "Successfully imported data"
+      echo $studyId,import,success >> $status
+    else
+      echo "Failed to import study ${studyId}"
+      echo $studyId,import,fail >> $status
+      continue
+    fi
   fi
-
+  
   #------------------#
   #---- Validate ----#
   #------------------#
-  echo "Validating import for study ${studyId}"
+  if [[ "$process" = *v* ]]; then
+    echo "Validating import for study ${studyId}"
+    
+    params=()
+    [[ ! -z "$db" ]] && params+=("-d $db")
+    
+    $MOVEDB_SRC/db/validate_import.r ${studyId} -c $clean "${params[@]}" -t 2>&1 | tee -a logs/$studyId.log
   
-  params=()
-  [[ ! -z "$db" ]] && params+=("-d $db")
-  
-  $MOVEDB_SRC/db/validate_import.r ${studyId} -c $clean "${params[@]}" -t 2>&1 | tee -a logs/$studyId.log
-
-  exitcode=("${PIPESTATUS[@]}")
-  
-  if [ ${exitcode[0]} -eq 0 ]; then
-    echo "Successfully validated import"
-    echo $studyId,validate,success >> $status
-  else
-    echo "Failed to validate import for study ${studyId}"
-    echo $studyId,validate,fail >> $status
-    continue
+    exitcode=("${PIPESTATUS[@]}")
+    
+    if [ ${exitcode[0]} -eq 0 ]; then
+      echo "Successfully validated import"
+      echo $studyId,validate,success >> $status
+    else
+      echo "Failed to validate import for study ${studyId}"
+      echo $studyId,validate,fail >> $status
+      continue
+    fi
   fi
-  
 done
 
 #TODO

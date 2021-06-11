@@ -29,15 +29,12 @@ if(interactive()) {
   .test <- TRUE
   rd <- here
 
-  #.studyid <- 9648615
-  .studyid <- 8008992
+  .studyid <- 9648615
 
   # .rawP <- file.path(.wd,'data',.studyid,'raw')
   # .cleanP <- file.path(.wd,'data',.studyid,'clean')
   
-  #csvdir <- '/Volumes/WD4TB/projects/ms3/analysis/full_workflow_poc/data/'
-  csvdir <- '/Volumes/WD4TB/projects/1000cranes/data'
-  
+  csvdir <- '/Volumes/WD4TB/projects/ms3/analysis/full_workflow_poc/data/'
   .rawP <- file.path(csvdir,.studyid,'raw')
   .cleanP <- file.path(csvdir,.studyid,'clean')
 } else {
@@ -60,12 +57,14 @@ if(interactive()) {
   if(length(ag$raw)==0) {
     .rawP <- file.path(.wd,'data',.studyid,'raw')
   } else {
+    #.rawP <- ifelse(isAbsolute(ag$raw),ag$raw,file.path(.wd,ag$raw))
     .rawP <- makePath(ag$raw)
   }
   
   if(length(ag$clean)==0) {
     .cleanP <- file.path(.wd,'data',.studyid,'clean')
   } else {
+    #.cleanP <- ifelse(isAbsolute(ag$clean),ag$clean,file.path(.wd,ag$clean))
     .cleanP <- makePath(ag$clean)
   }
 }
@@ -87,11 +86,11 @@ suppressWarnings(
 list.files(rd('src/funs/auto'),full.names=TRUE) %>%
   walk(source)
 
-source(rd('src/funs/mbts.r'))
-
 #This sets the movebank output format for timestamps for write_csv
-#TODO: make sure this works correctly
-output_column.POSIXct <- mbts
+#TODO: add 0.0005 to x so that ts is written correctly
+output_column.POSIXct <- function(x) {
+  format(x, "%Y-%m-%d %H:%M:%OS3", tz='UTC')
+}
 
 dir.create(.cleanP,showWarnings=FALSE,recursive=TRUE)
 
@@ -328,6 +327,8 @@ message(glue('Filtered out {format(nrow(evt0)-nrow(evt),big.mark=",")} bad recor
 # 3) if only deploy off is NA, timestamp just needs to be > deploy on
 # 4) if deploy on and deploy off are both NA, take all records
 
+#TODO: I don't think #4 is working correctly
+
 message('Starting deployment filtering')
 
 message('Found the following deploy on/off patterns')
@@ -376,12 +377,14 @@ message('Removing duplicates')
 # version of the records with additional metadata values (ground speed) are added
 # these more complete records are supposed to have higher event_id but this is not
 # always the case.
-# Furthermore, I've discovered that many of these pseudo-duplicates are off by < 1 second (often .001 or .999)
-# This means the only way to remove these is to de-duplicate based on 1 second resolution.
 #From Sarah: "If and when the same data are collected by a base station and imported to the study, 
 # the more complete version of the same record is added. So the studies end up with semi-duplicate 
 # records, with the later record added to the database being more complete."
 # NOTE: I don't find this to be the case. In some cases, first event has data and the second is NA
+# So, need to figure out a good way to filter. 
+# Can't just filter out where ground_speed=NA, b/c what if both dups have ground_speed=NA?
+# For a set of duplicates, I should always take the one that has ground_speed. 
+# What if both have NA? Then just take one of them.
 #
 # TODO: also check that two depolyments (with non-overlapping dates) works correctly.
 #   It should, but double check. See 164399988 "SOI Lake Sempach Mallards"
@@ -395,14 +398,14 @@ message('Removing duplicates')
 
 #TODO: need to truncate timestamp to seconds, and then group by that, since duplicate records can have different milliseconds
 message('Identifying duplicates...')
-#Need to do de-duplication against a timestamp that does not include milliseconds
-evtdep <- evtdep %>% mutate(ts_sec=trunc(timestamp,units='secs'))
-
 t1 <- Sys.time()
-
 dupgrps <- evtdep %>% 
-  group_by(individual_id,tag_id,sensor_type_id,ts_sec) %>% #include sensor_type_id in case we have multiple sensors
-  summarize(num=n()) %>%
+  group_by(individual_id,tag_id,sensor_type_id,timestamp) %>% #in case we have multiple sensors
+  summarize(
+    num=n(), #NOTE: revisit allna, numnotna, uniq. Mainly useful for investigation but not used for main workflow.
+    allna=all(is.na(ground_speed)),
+    numnotna=sum(!is.na(ground_speed)),
+    uniq=length(unique(round(ground_speed,5)))) %>%
   filter(num > 1) %>%
   ungroup() %>%
   mutate(dup_id=row_number())
@@ -441,13 +444,13 @@ if(nrow(dupgrps) > 0) {
   message(glue('There are {dupgrps %>% filter(num>2) %>% nrow} dup groups that have > 2 records'))
   
   #This gets all duplicate records
+  #TODO: join by truncated timestamp
   dupevts <- evtdep %>%
-    inner_join(dupgrps,by=c('individual_id','tag_id','sensor_type_id','ts_sec')) %>%
-    mutate(ts_str=mbts(timestamp)) %>% #write ts out to string in order to examine milliseconds
+    inner_join(dupgrps,by=c('individual_id','tag_id','sensor_type_id','timestamp')) %>%
     arrange(individual_id,tag_id,timestamp,event_id)
   
   #Look at any dup groups with > 2 records
-  #dupevts %>% filter(num>2) %>% View #dup_id: 6489
+  #dupevts %>% filter(num>2) %>% View
   
   message(glue('There are {nrow(dupevts)} duplicated records'))
   
@@ -455,46 +458,14 @@ if(nrow(dupgrps) > 0) {
   
   t1 <- Sys.time()
   
-  # Old method uses distinct() to pick undifferenciable rows from within duplication groups.
-  # This doesn't make sense. If, after doing a filter, there are still multiple rows per group, this
-  # means there is more than one row with the same number of values. In this case, we don't have any criteria to 
-  # distinguish among the rows so just pick one. This is the approach I take below using slice(1)
-  
-  # undup <- dupevts %>% 
-  #   mutate(numvals=rowSums(!is.na(.))) %>%
-  #   group_by(dup_id) %>% 
-  #   filter(numvals==max(numvals)) %>%
-  #   distinct(
-  #     across(-event_id,.fns=~ifelse(is.numeric(.),round(.,8),.)),
-  #     .keep_all=TRUE) %>%
-  #   ungroup
-
-  #first, de-dup based on rows with the most data
-    undup <- dupevts %>% 
-      mutate(numvals=rowSums(!is.na(.))) %>%
-      group_by(dup_id) %>% 
-      filter(numvals==max(numvals)) %>%
-      ungroup
-    
-    #Some records might have the same number of values
-    #If this occurs, we can't differenciate further, so just pick one from the group
-    
-    y <- undup %>%
-      group_by(dup_id) %>%
-      mutate(num=n()) %>%
-      ungroup %>%
-      filter(num > 1)
-    
-    if(nrow(y) > 0) {
-    'A total of {nrow(y)} records in {length(unique(y$dup_id))} duplication groups had records that could not be differenciated, so one row was selected per group.' %>% glue %>% message
-      #View(y)
-      undup <- undup %>%
-        group_by(dup_id) %>%
-        slice(1) %>%
-        ungroup
-    }
-
-  rm(y)
+  undup <- dupevts %>% 
+    mutate(numvals=rowSums(!is.na(.))) %>%
+    group_by(dup_id) %>% 
+    filter(numvals==max(numvals)) %>%
+    distinct(
+      across(-event_id,.fns=~ifelse(is.numeric(.),round(.,8),.)),
+      .keep_all=TRUE) %>%
+    ungroup
 
   message(glue('Complete in {diffmin(t1)} minutes'))
 
@@ -507,8 +478,8 @@ if(nrow(dupgrps) > 0) {
   # Make sure all dup groups have at least one record
   invisible(assert_that(length(dupgrps$dup_id)==length(undup$dup_id)))
 
-  #Undup now contains unduplicated records from all duplication groups. 
-  # First, do antijoin with dupevts to figure out which records to remove
+  #Undup now contains all unduplicated records. Do antijoin with dupevts to figure out which
+  # records to throw away.
   dups <- dupevts %>% anti_join(undup, by='event_id')
   #Then, antijoin this to the full event data set to remove the dups.
   evtnodup <- evtdep %>% anti_join(dups, by='event_id')
@@ -524,8 +495,9 @@ if(nrow(dupgrps) > 0) {
   message('Making sure there are no more duplicates...')
   t1 <- Sys.time()
   
+  #TODO: group by truncated timestamps
   numdups <- evtnodup %>% 
-    group_by(individual_id,tag_id,sensor_type_id,ts_sec) %>% #in case we have multiple sensors
+    group_by(individual_id,tag_id,sensor_type_id,timestamp) %>% #in case we have multiple sensors
     summarize(num=n()) %>%
     filter(num > 1) %>%
     ungroup() %>%
@@ -558,8 +530,6 @@ invisible(assert_that(nrow(evtnodup) > 0))
 # 
 # So, where we have redundant gps and eobs, collapse these fields
 # We don't take eobs_speed_accuracy assessment b/c data dictionary says it is very poor.
-
-#TODO: Make this more dynamic based on fields.csv
 evtFinal <- evtnodup %>%
   mutate(
     horizontal_accuracy=ifelse(is.na(eobs_horizontal_accuracy_estimate), 

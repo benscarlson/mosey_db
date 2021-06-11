@@ -1,5 +1,8 @@
 #!/usr/bin/env Rscript --vanilla
 
+#this code executes clean_study.r up to the point of removing duplicates. It also reads in timstamps as strings, so that they can be inspected exactly as they appear in the csv file.
+# there is a bunch of code at the bottom that looks at patterns in milliseconds.
+
 #TODO: can make studyid optional. It is only used if raw and out folders are not specified
 #TODO: now that I'm requesting all entities in a standard way I could use a function
 
@@ -28,16 +31,15 @@ if(interactive()) {
   .seed <- NULL
   .test <- TRUE
   rd <- here
-
-  #.studyid <- 9648615
+  
   .studyid <- 8008992
-
+  
   # .rawP <- file.path(.wd,'data',.studyid,'raw')
   # .cleanP <- file.path(.wd,'data',.studyid,'clean')
   
-  #csvdir <- '/Volumes/WD4TB/projects/ms3/analysis/full_workflow_poc/data/'
+  #csvdir <- '/Volumes/WD4TB/projects/ms3/analysis/full_workflow_poc/data'
+  #csvdir <- '/Volumes/WD4TB/projects/covid/analysis/movedb/csvs'
   csvdir <- '/Volumes/WD4TB/projects/1000cranes/data'
-  
   .rawP <- file.path(csvdir,.studyid,'raw')
   .cleanP <- file.path(csvdir,.studyid,'clean')
 } else {
@@ -60,12 +62,14 @@ if(interactive()) {
   if(length(ag$raw)==0) {
     .rawP <- file.path(.wd,'data',.studyid,'raw')
   } else {
+    #.rawP <- ifelse(isAbsolute(ag$raw),ag$raw,file.path(.wd,ag$raw))
     .rawP <- makePath(ag$raw)
   }
   
   if(length(ag$clean)==0) {
     .cleanP <- file.path(.wd,'data',.studyid,'clean')
   } else {
+    #.cleanP <- ifelse(isAbsolute(ag$clean),ag$clean,file.path(.wd,ag$clean))
     .cleanP <- makePath(ag$clean)
   }
 }
@@ -81,17 +85,16 @@ source(rd('src/startup.r'))
 suppressWarnings(
   suppressPackageStartupMessages({
     library(knitr)
-}))
+  }))
 
 #Source all files in the auto load funs directory
 list.files(rd('src/funs/auto'),full.names=TRUE) %>%
   walk(source)
 
-source(rd('src/funs/mbts.r'))
-
 #This sets the movebank output format for timestamps for write_csv
-#TODO: make sure this works correctly
-output_column.POSIXct <- mbts
+output_column.POSIXct <- function(x) {
+  format(x, "%Y-%m-%d %H:%M:%OS3", tz='UTC')
+}
 
 dir.create(.cleanP,showWarnings=FALSE,recursive=TRUE)
 
@@ -123,7 +126,7 @@ indFields <- fields %>% filter(table=='individual' & !is.na(type_raw))
 
 #Load raw data using specified column types, then rename columns to cleaned names
 ind00 <- read_csv(file.path(.rawP,'individual.csv'),
-          col_types=paste(indFields$type_raw,collapse="")) %>%
+                  col_types=paste(indFields$type_raw,collapse="")) %>%
   rename(!!!setNames(indFields$name_raw,indFields$name_clean))
 
 spp <- unique(ind00$taxon_canonical_name)
@@ -159,7 +162,7 @@ message('Loading sensor data')
 sensFields <- fields %>% filter(table=='sensor' & !is.na(type_raw))
 
 sens0 <- read_csv(file.path(.rawP,'sensor.csv'),
-          col_types=paste(sensFields$type_raw,collapse="")) %>%
+                  col_types=paste(sensFields$type_raw,collapse="")) %>%
   rename(!!!setNames(sensFields$name_raw,sensFields$name_clean))
 
 message('Found the following sensors:')
@@ -179,7 +182,7 @@ message('Loading tag data')
 tagFields <- fields %>% filter(table=='tag' & !is.na(type_raw))
 
 tag0 <- read_csv(file.path(.rawP,'tag.csv'),
-          col_types=paste(tagFields$type_raw,collapse="")) %>%
+                 col_types=paste(tagFields$type_raw,collapse="")) %>%
   rename(!!!setNames(tagFields$name_raw,tagFields$name_clean))
 
 message('Found the following tag types:')
@@ -249,15 +252,15 @@ invisible(assert_that(tag %>% anti_join(dep, by='tag_id') %>% nrow == 0)) #shoul
 #Check to see if the same individual has the same tag with multiple deployments
 #Should not be a problem because I'm filtering by date, but double check if this case comes up.
 invisible(assert_that(dep %>% group_by(individual_id,tag_id) %>% summarize(num=n()) %>% 
-  filter(num > 1) %>% nrow == 0))
+                        filter(num > 1) %>% nrow == 0))
 
 #Tag can be deployed multiple times, but on and off ts must be different
 invisible(assert_that(dep %>% 
-  group_by(tag_id) %>% 
-  summarize(diff_on=length(unique(deploy_on_timestamp))==n(),
-            diff_off=length(unique(deploy_off_timestamp))==n()) %>%
-  filter(diff_on==FALSE | diff_off==FALSE) %>% nrow == 0))
-  
+                        group_by(tag_id) %>% 
+                        summarize(diff_on=length(unique(deploy_on_timestamp))==n(),
+                                  diff_off=length(unique(deploy_off_timestamp))==n()) %>%
+                        filter(diff_on==FALSE | diff_off==FALSE) %>% nrow == 0))
+
 #Primary keys for all tables should be unique
 invisible(assert_that(!any(duplicated(ind$individual_id))))
 invisible(assert_that(!any(duplicated(dep$deployment_id))))
@@ -280,9 +283,19 @@ message('Loading event data. This can take awhile...')
 #Events are not loaded/renamed in the same way as other entities b/c there is not
 # a 1-to-1 mapping between fields.
 
-coltypes <- fields %>% 
-  filter(table=='event' & !is.na(type_raw)) %>% 
-  pull('type_raw') %>% paste(collapse="")
+# coltypes <- fields %>% 
+#   filter(table=='event' & !is.na(type_raw)) %>% 
+#   pull('type_raw') %>% paste(collapse="")
+
+#Load timestamps as character instead of posix
+coltypes <- fields %>%
+  filter(table=='event' & !is.na(type_raw)) %>%
+  pull('type_raw')
+
+coltypes[5] <- 'c'
+
+coltypes <- paste(coltypes,collapse="")
+
 
 #Note rmoveapi doesn't clean out line breaks \r\n when downloading directly to disk
 #May need to address this issue in the future but there aren't any long text fields
@@ -293,8 +306,11 @@ evt0 <- read_csv(file.path(.rawP,'event.csv'),col_types=coltypes) %>%
 
 message(glue('Retreived {format(nrow(evt0),big.mark=",")} events'))
 
+evt00 <- evt0 %>%
+  mutate(ts_str=timestamp, timestamp=as.POSIXct(timestamp,tz='UTC'))
+
 #See report: event_raw for a table
-evt <- evt0 %>% 
+evt <- evt00 %>% 
   filter(is.na(visible) | visible==TRUE) %>% #I think visible should always be true
   filter(!is.na(lon) & !is.na(lat)) %>% 
   filter(lon!=0 & lat!=0) %>% 
@@ -328,13 +344,15 @@ message(glue('Filtered out {format(nrow(evt0)-nrow(evt),big.mark=",")} bad recor
 # 3) if only deploy off is NA, timestamp just needs to be > deploy on
 # 4) if deploy on and deploy off are both NA, take all records
 
+#TODO: I don't think #4 is working correctly
+
 message('Starting deployment filtering')
 
 message('Found the following deploy on/off patterns')
 
 dep %>% mutate(
-    na_dep_on=is.na(deploy_on_timestamp),
-    na_dep_off=is.na(deploy_off_timestamp)) %>%
+  na_dep_on=is.na(deploy_on_timestamp),
+  na_dep_off=is.na(deploy_off_timestamp)) %>%
   distinct(na_dep_on,na_dep_off) %>%
   mutate(across(.fns=~ifelse(.,NA,'timestamp'))) %>%
   arrange(na_dep_on,na_dep_off) %>% 
@@ -344,15 +362,15 @@ dep %>% mutate(
 #TODO: need to test each case to make sure it works.
 evtdep <- evt %>% 
   inner_join(dep %>% 
-    select(deployment_id,individual_id,tag_id,deploy_on_timestamp,deploy_off_timestamp),
-    by=c('individual_id', 'tag_id')) %>%
+               select(deployment_id,individual_id,tag_id,deploy_on_timestamp,deploy_off_timestamp),
+             by=c('individual_id', 'tag_id')) %>%
   filter( 
     (timestamp >= deploy_on_timestamp & timestamp < deploy_off_timestamp) | #case 1
-    (is.na(deploy_on_timestamp) & timestamp < deploy_off_timestamp) | #case 2
-    (timestamp >= deploy_on_timestamp & is.na(deploy_off_timestamp)) | #case 3
-    (is.na(deploy_on_timestamp) & is.na(deploy_off_timestamp)) #case 4
+      (is.na(deploy_on_timestamp) & timestamp < deploy_off_timestamp) | #case 2
+      (timestamp >= deploy_on_timestamp & is.na(deploy_off_timestamp)) | #case 3
+      (is.na(deploy_on_timestamp) & is.na(deploy_off_timestamp)) #case 4
   )
-  
+
 invisible(assert_that(evtdep %>% filter(timestamp < deploy_on_timestamp) %>% nrow == 0)) #No cases where timestamp is < deploy on. Also covers case where deploy on is NA
 invisible(assert_that(evtdep %>% filter(timestamp > deploy_off_timestamp) %>% nrow == 0)) #No cases where timestamp is > deploy off. Also covers case where deploy off is NA.
 
@@ -366,6 +384,63 @@ invisible(assert_that(evtdep %>% filter(is.na(individual_id)) %>% nrow == 0))
 #Make sure the same tag does not have duplicate sensor types (e.g. can't have two gps sensors on the same tag)
 invisible(assert_that(evtdep %>% inner_join(sens,by=c('tag_id','sensor_type_id')) %>% nrow==evtdep %>% nrow))
 
+#---- Now that all filtering is complete, check milliseconds ---#
+
+#Check these out. Do any of these individuals have sub-second resolution?
+# Super high daily points
+# Grus nigricollis - BHUTAN-MPIAB GPRS (8008992)
+# - Sam Taen Ling (3928), > 6000
+# - Gaen Tro Ling (3965), > 6000
+# - Tse Chig Ling (3913)
+# 
+# GPS telemetry of Common Cranes, Sweden (10722328)
+# - 7558, > 2500
+
+#How many different types of milliseconds are there?
+evtdep %>% mutate(millis=str_sub(ts_str,-4)) %>% distinct(millis) %>% pull('millis')
+
+#20873986 58 values, bi-modal
+#8008992 33 values, bi-modal
+evtdep %>% mutate(millis=str_sub(ts_str,-4)) %>% group_by(millis) %>% 
+  summarize(num=n()) %>% arrange(millis) %>% kable #View
+
+table(is.na(evtdep$ground_speed))
+
+#Pick out an individual with groundspeed=NA and examine it's timestamps
+evtdep %>% filter(is.na(ground_speed)) %>% distinct(individual_id)
+
+ind %>% filter(local_identifier=='7558')
+#Try to find an individual that has NA and legit values for ground speed
+evtdep %>% group_by(individual_id,na=is.na(ground_speed)) %>% summarize(num=n()) %>% 
+  arrange(individual_id) %>% View
+
+evtdep %>% filter(individual_id==10197543) %>%
+  arrange(individual_id,tag_id,sensor_type_id,timestamp) %>% 
+  select(event_id,individual_id,tag_id,sensor_type_id,lon,lat,timestamp,ts_str,ground_speed) %>%
+  slice(3:13) %>% select(event_id,individual_id,tag_id,ts_str,ground_speed) %>% kable
+  View
+
+
+evtdep %>% filter(individual_id==28715112) %>%
+  arrange(tag_id,sensor_type_id,timestamp) %>%
+  group_by(date=as.Date(timestamp)) %>%
+  summarize(num=n()) %>%
+  arrange(desc(num))
+
+#Maximum number of events at 1-second resolution is 60*60*24 = 86,400 events
+#55370912 on 2015-03-05 has 6000+ points and appears to have 1 second resolution for part of the day
+#55626725 on 2015-03-06 has 3000+ points and appears to have 1 second resolution for part of the day
+#28715112 on 2014-09-24 has 2500+ points. Seems to have 30 second resolution for parts of the day
+evtdep %>% filter(individual_id==28715112 & as.Date(timestamp)=='2014-09-24') %>%
+  arrange(tag_id,sensor_type_id,timestamp) %>%
+  select(event_id,individual_id,tag_id,sensor_type_id,lon,lat,timestamp,ts_str,ground_speed) %>%
+  View
+
+#Which individuals have unusual milliseconds?
+evtdep %>% mutate(millis=str_sub(ts_str,-4),millis_num=as.numeric(millis)) %>% 
+  select(individual_id,millis,millis_num) %>% 
+  filter(!millis_num %in% c(0,0.001,0.999)) %>% View
+
 #----
 #---- Removing duplicates ----#
 #---- 
@@ -376,12 +451,14 @@ message('Removing duplicates')
 # version of the records with additional metadata values (ground speed) are added
 # these more complete records are supposed to have higher event_id but this is not
 # always the case.
-# Furthermore, I've discovered that many of these pseudo-duplicates are off by < 1 second (often .001 or .999)
-# This means the only way to remove these is to de-duplicate based on 1 second resolution.
 #From Sarah: "If and when the same data are collected by a base station and imported to the study, 
 # the more complete version of the same record is added. So the studies end up with semi-duplicate 
 # records, with the later record added to the database being more complete."
 # NOTE: I don't find this to be the case. In some cases, first event has data and the second is NA
+# So, need to figure out a good way to filter. 
+# Can't just filter out where ground_speed=NA, b/c what if both dups have ground_speed=NA?
+# For a set of duplicates, I should always take the one that has ground_speed. 
+# What if both have NA? Then just take one of them.
 #
 # TODO: also check that two depolyments (with non-overlapping dates) works correctly.
 #   It should, but double check. See 164399988 "SOI Lake Sempach Mallards"
@@ -393,16 +470,16 @@ message('Removing duplicates')
 # usually just one record will have NA and the other will have a value
 # when this is not the case, nomnotna will have value > 1
 
-#TODO: need to truncate timestamp to seconds, and then group by that, since duplicate records can have different milliseconds
+
 message('Identifying duplicates...')
-#Need to do de-duplication against a timestamp that does not include milliseconds
-evtdep <- evtdep %>% mutate(ts_sec=trunc(timestamp,units='secs'))
-
 t1 <- Sys.time()
-
 dupgrps <- evtdep %>% 
-  group_by(individual_id,tag_id,sensor_type_id,ts_sec) %>% #include sensor_type_id in case we have multiple sensors
-  summarize(num=n()) %>%
+  group_by(individual_id,tag_id,sensor_type_id,timestamp) %>% #in case we have multiple sensors
+  summarize(
+    num=n(), #NOTE: revisit allna, numnotna, uniq. Mainly useful for investigation but not used for main workflow.
+    allna=all(is.na(ground_speed)),
+    numnotna=sum(!is.na(ground_speed)),
+    uniq=length(unique(round(ground_speed,5)))) %>%
   filter(num > 1) %>%
   ungroup() %>%
   mutate(dup_id=row_number())
@@ -411,210 +488,136 @@ message(glue('Complete in {diffmin(t1)} minutes'))
 
 message(glue('There are {nrow(dupgrps)} duplication groups'))
 
-# Some dup groups have records that are all identical (except for event_id)
-#   and do not. For those that do not, values for each record should be a subset 
-#   of one of the records. Given this information, de-duplication works like this.
-# 1) assume all rows in a group have information that is a subset of another row
-#   in the group. so, we want to identify the row with more information. To do this,
-#   sum up the number of non-na values in each row.
-#   select the row with the higher number of valid nonna values
-#   use filter(nonna==max(nonna)) this will take the row with the values,
-#   or if the records are all the same, it will take all records
-# 2) then, do a distinct() operation on all rows but event_id. This will remove the
-#   remaining records that are exact duplicates. Note that we should never have
-#   a record with the same individual_id, timestamp, and sensor and tag.
-# 3) if after distinct operation, a dup group has more than one record, this indicates
-#   that two records had conflicting nonna values, or one record has na for a column
-#   and the other had a value, and this pattern was reversed for another column (i.e.
-#   all records were not subsets of one record).
-#   if the non-subset case occcured AND it happened more on one record than the other
-#   then it is possible that the row with less information will be filtered out and
-#   some information might be lost. Seems like a rare case though.
-#   TODO: I can possibly do a test for the above condition.
 
-#This does the de-duping
-#Note use of function to round numeric columns to 8 decimal points
-#TODO: check csv files, how many decimal places are are in those?
-# need to do this otherwise distinct will not work
-if(nrow(dupgrps) > 0) {
-  
-  message(glue('There are {dupgrps %>% filter(num>2) %>% nrow} dup groups that have > 2 records'))
-  
-  #This gets all duplicate records
-  dupevts <- evtdep %>%
-    inner_join(dupgrps,by=c('individual_id','tag_id','sensor_type_id','ts_sec')) %>%
-    mutate(ts_str=mbts(timestamp)) %>% #write ts out to string in order to examine milliseconds
-    arrange(individual_id,tag_id,timestamp,event_id)
-  
-  #Look at any dup groups with > 2 records
-  #dupevts %>% filter(num>2) %>% View #dup_id: 6489
-  
-  message(glue('There are {nrow(dupevts)} duplicated records'))
-  
-  message('Removing duplicates...')
-  
-  t1 <- Sys.time()
-  
-  # Old method uses distinct() to pick undifferenciable rows from within duplication groups.
-  # This doesn't make sense. If, after doing a filter, there are still multiple rows per group, this
-  # means there is more than one row with the same number of values. In this case, we don't have any criteria to 
-  # distinguish among the rows so just pick one. This is the approach I take below using slice(1)
-  
-  # undup <- dupevts %>% 
-  #   mutate(numvals=rowSums(!is.na(.))) %>%
-  #   group_by(dup_id) %>% 
-  #   filter(numvals==max(numvals)) %>%
-  #   distinct(
-  #     across(-event_id,.fns=~ifelse(is.numeric(.),round(.,8),.)),
-  #     .keep_all=TRUE) %>%
-  #   ungroup
 
-  #first, de-dup based on rows with the most data
-    undup <- dupevts %>% 
-      mutate(numvals=rowSums(!is.na(.))) %>%
-      group_by(dup_id) %>% 
-      filter(numvals==max(numvals)) %>%
-      ungroup
-    
-    #Some records might have the same number of values
-    #If this occurs, we can't differenciate further, so just pick one from the group
-    
-    y <- undup %>%
-      group_by(dup_id) %>%
-      mutate(num=n()) %>%
-      ungroup %>%
-      filter(num > 1)
-    
-    if(nrow(y) > 0) {
-    'A total of {nrow(y)} records in {length(unique(y$dup_id))} duplication groups had records that could not be differenciated, so one row was selected per group.' %>% glue %>% message
-      #View(y)
-      undup <- undup %>%
-        group_by(dup_id) %>%
-        slice(1) %>%
-        ungroup
-    }
+# Try to figure out what is going on with timestamps & milliseconds
 
-  rm(y)
+library(lubridate)
+evtdep %>% filter(individual_id==10197543 & timestamp==ymd_hms('2013-06-11 10:01:01'))
 
-  message(glue('Complete in {diffmin(t1)} minutes'))
+#Timestamps are off by 1 millisecond. Can't see that when using 0S3 b/c of truncation and impresise floating point representation
+evtdep %>% filter(event_id %in% c(194500753,194510657)) %>% 
+  mutate(ts_OS3=strftime(timestamp,format='%Y-%m-%d %H:%M:%OS3',tz='UTC'),
+         ts_OS6=strftime(timestamp,format='%Y-%m-%d %H:%M:%OS6',tz='UTC')) %>% View
 
-  #This will look at any remaining duplicated groups
-  # undup %>% filter(dup_id %in% undup[duplicated(undup$dup_id),]$dup_id) %>% View
-  
-  #Make sure no dup groups with more than one record
-  # This can indicate that two records had conflicting info, or that one was not a subset of the other
-  invisible(assert_that(anyDuplicated(undup$dup_id)==0)) 
-  # Make sure all dup groups have at least one record
-  invisible(assert_that(length(dupgrps$dup_id)==length(undup$dup_id)))
 
-  #Undup now contains unduplicated records from all duplication groups. 
-  # First, do antijoin with dupevts to figure out which records to remove
-  dups <- dupevts %>% anti_join(undup, by='event_id')
-  #Then, antijoin this to the full event data set to remove the dups.
-  evtnodup <- evtdep %>% anti_join(dups, by='event_id')
-  
-  #--- do some final checking ---#
-  
-  message(glue('Removed {format(nrow(dups),big.mark=",")} duplicated records'))
-  #The number of final non-duplicated records should be equal to the number of deployed
-  # records, minus the full dataset of duplicates, plus the unduplicated records.
-  invisible(assert_that(nrow(evtnodup)==nrow(evtdep) - nrow(dupevts) + nrow(undup)))
+#Try to locate all records that are off by a small amount (e.g. 1 ms)
 
-  #Double check there are no duplicate records
-  message('Making sure there are no more duplicates...')
-  t1 <- Sys.time()
-  
-  numdups <- evtnodup %>% 
-    group_by(individual_id,tag_id,sensor_type_id,ts_sec) %>% #in case we have multiple sensors
-    summarize(num=n()) %>%
-    filter(num > 1) %>%
-    ungroup() %>%
-    mutate(dup_id=row_number()) %>% nrow
-  
-  message(glue('Complete in {diffmin(t1)} minutes'))
-  
-  invisible(assert_that(numdups==0,msg=glue('Found {numdups} duplicates. Exiting')))
-  
-} else {
-  evtnodup <- evtdep
-}
 
-#Make sure all events are associated with a tag
-invisible(assert_that(evtnodup %>% anti_join(dep,by='tag_id') %>% nrow == 0))
+#do antijoin to remove all records in dupgrps
+noExactDup <- evtdep %>%
+  anti_join(dupgrps,by=c('individual_id','tag_id','sensor_type_id','timestamp')) %>%
+  arrange(individual_id,tag_id,timestamp,event_id)
 
-#Make sure there are still some valid events
-invisible(assert_that(nrow(evtnodup) > 0))
+#Should be empty
+noExactDup %>% 
+  group_by(individual_id,tag_id,sensor_type_id,timestamp) %>% #in case we have multiple sensors
+  summarize(
+    num=n()) %>%
+  filter(num > 1) %>%
+  ungroup() %>% nrow # result is 0 as expected
 
-#---- Finalize the event dataset ----#
+#then, do grouping again but use %OS3 to group timestamps. This will match, e.g. '.000' and '.001'
+# This is becuase (using %OS6), the fractional seconds are
+# .000 -> .000000, and .001 -> .000999.
+# Then, because of truncation, %OS3 results in .000 for both.
+# So, going from csv -> POSIXct -> csv we have
+# .000 -> .000000 -> .000 and
+# .001 -> .000999 -> .000
 
-#From Sarah regarding eobs vs. gps versions.
-# Eobs was the first company for which we provided a live feed or custom format for GPS units, 
-# so they created variables specific to eobs, but then later realized that it is better to 
-# create variables that are not specific to a particular company when possible. So those eobs 
-# variables continue to be used, and will generally be redundant with the non-eobs versions, 
-# unless the eobs definition in the attribute dictionary says something more specific. 
-# For example, the definition for "eobs speed accuracy estimate" says these values are not 
-# very reliable for eobs tags.
-# 
-# So, where we have redundant gps and eobs, collapse these fields
-# We don't take eobs_speed_accuracy assessment b/c data dictionary says it is very poor.
+dupgrps_ts3 <- noExactDup %>% 
+  mutate(ts=strftime(timestamp,format='%Y-%m-%d %H:%M:%OS3',tz='UTC')) %>%
+  group_by(individual_id,tag_id,sensor_type_id,ts) %>% #in case we have multiple sensors
+  summarize(
+    num=n()) %>%
+  filter(num > 1) %>%
+  ungroup()  %>%
+  mutate(dup_id=row_number())
 
-#TODO: Make this more dynamic based on fields.csv
-evtFinal <- evtnodup %>%
-  mutate(
-    horizontal_accuracy=ifelse(is.na(eobs_horizontal_accuracy_estimate), 
-      gps_horizontal_accuracy_estimate,eobs_horizontal_accuracy_estimate),
-    time_to_fix=ifelse(is.na(eobs_used_time_to_get_fix),gps_time_to_fix,eobs_used_time_to_get_fix),
-    fix_type=ifelse(is.na(eobs_type_of_fix),gps_fix_type,eobs_type_of_fix)
-  ) %>%
-  select(event_id,individual_id,lon,lat,timestamp,tag_id,sensor_type_id,
-         ground_speed,gps_speed_accuracy_estimate,
-         gps_dop,gps_hdop,gps_vdop,gps_satellite_count,
-         horizontal_accuracy,time_to_fix,fix_type)
+#finally, use these new groups to extract the individual events from evtdep
+#These are the rows that are off by just 1 or a few ms
 
-#--- print summary ---#
-message(glue('Final num individuals: {nrow(ind)}, num events: {format(nrow(evtFinal),big.mark=",")}'))
+pseudodup <- evtdep %>% 
+  mutate(ts=strftime(timestamp,format='%Y-%m-%d %H:%M:%OS3',tz='UTC'),
+         ts6=strftime(timestamp,format='%Y-%m-%d %H:%M:%OS6',tz='UTC')) %>%
+  inner_join(dupgrps_ts3,by=c('individual_id','tag_id','sensor_type_id','ts')) %>%
+  arrange(individual_id,tag_id,timestamp,event_id)
 
-#------------------------#
-#---- Compare totals ----#
-#------------------------#
+pseudodup %>% select(ground_speed,timestamp,ts,ts6) %>% View
+#Every pair has one event with .000 and one with .001
+#The one with .001 is always the one with more complete data
+#So, maybe this is what Sarah meant by taking the 'later' one.
 
-message(
-'Compare final totals to what is reported by movebank.
-The totals should be similar but might not be exactly the same.
-The totals reported by the movebank api might even be different than the totals reported on the movebank web page.
-This might have to do with backend processes that are not updated on movebank yet.
-In all cases I have looked at the totals from the script seem to match the web page exactly.')
 
-mbstats <- std %>% 
-  select(
-    number_of_individuals,
-    number_of_deployments,
-    number_of_deployed_locations,
-    timestamp_first_deployed_location,
-    timestamp_last_deployed_location)
 
-cstats <- tibble(number_of_individuals=nrow(ind),
-       number_of_deployments=nrow(dep),
-       number_of_deployed_locations=nrow(evtFinal),
-       timestamp_first_deployed_location=min(evtFinal$timestamp),
-       timestamp_last_deployed_location=max(evtFinal$timestamp))
 
-bind_rows(mbstats,cstats) %>% t %>% as.data.frame %>% 
-  rename(Movebank=V1,Script=V2) %>% 
-  kable %>% paste(collapse='\n') %>% message
+#----- older investigations ----
+dupgrps %>% filter(individual_id==10197543 & timestamp==ymd_hms('2013-06-11 10:01:01'))
 
-#--------------------------------------#
-#---- Write out final data to csvs ----#
-#--------------------------------------#
+evtdep %>% 
+  filter(event_id %in% c(194500753,194510657)) %>% 
+  group_by(individual_id,tag_id,sensor_type_id,timestamp) %>% #in case we have multiple sensors
+  summarize(
+    num=n(), #NOTE: revisit allna, numnotna, uniq. Mainly useful for investigation but not used for main workflow.
+    allna=all(is.na(ground_speed)),
+    numnotna=sum(!is.na(ground_speed)),
+    uniq=length(unique(round(ground_speed,5))))
 
-message('Saving data to csv files')
+x <- evtdep %>% 
+  filter(event_id %in% c(194500753,194510657))
 
-write_csv(std,file.path(.cleanP,'study.csv'),na="")
-write_csv(ind,file.path(.cleanP,'individual.csv'),na="")
-write_csv(sens,file.path(.cleanP,'sensor.csv'),na="")
-write_csv(tag,file.path(.cleanP,'tag.csv'),na="")
-write_csv(dep,file.path(.cleanP,'deployment.csv'),na="")
-write_csv(evtFinal,file.path(.cleanP,'event.csv'),na="")
+#mlr --csv filter '$event_id == 194500753 || $event_id == 194510657' event.csv
 
-message(glue('Script complete in {diffmin(t0)} minutes'))
+all(x$individual_id==x$individual_id[1])
+all(x$tag_id==x$tag_id[1])
+all(x$sensor_type_id==x$sensor_type_id[1])
+all(x$timestamp==x$timestamp[1])
+x$timestamp[1]
+x$timestamp[2]
+
+as.numeric(x$timestamp[1])
+as.numeric(x$timestamp[2])
+x$timestamp[1]==x$timestamp[2]
+
+class(x$timestamp[1])
+class(x$timestamp[2])
+
+strftime(x$timestamp[1],format='%Y-%m-%d %H:%M:%OS6',tz='UTC')
+strftime(x$timestamp[2],format='%Y-%m-%d %H:%M:%OS6',tz='UTC')
+
+#When printing, certain milliseconds are internally rounded down, which results in printing one less
+# Than the correct number. Note .001 is printed as .000999, but .002 is printed as .002
+#https://stackoverflow.com/questions/7726034/how-r-formats-posixct-with-fractional-seconds
+as.POSIXct('2013-06-11 10:01:01.001',tz='UTC') %>% strftime(format='%Y-%m-%d %H:%M:%OS3',tz='UTC')
+as.POSIXct('2013-06-11 10:01:01.002',tz='UTC') %>% strftime(format='%Y-%m-%d %H:%M:%OS6',tz='UTC')
+as.POSIXct('2013-06-11 10:01:01.003',tz='UTC') %>% strftime(format='%Y-%m-%d %H:%M:%OS6',tz='UTC')
+
+as.POSIXct('2013-06-11 10:01:01.487',tz='UTC') %>% strftime(format='%Y-%m-%d %H:%M:%OS6',tz='UTC')
+as.POSIXct('2013-06-11 10:01:01.488',tz='UTC') %>% strftime(format='%Y-%m-%d %H:%M:%OS6',tz='UTC')
+
+x <- as.numeric(as.POSIXct('2013-06-11 10:01:01.488',tz='UTC')) - 
+  as.numeric(as.POSIXct('2013-06-11 10:01:01.487',tz='UTC')) 
+
+round(x,3)
+
+ts <- as.POSIXct('2013-06-11 10:01:01.001',tz='UTC')
+strftime(ts,format='%Y-%m-%d %H:%M:%OS3',tz='UTC')
+strftime(ts,format='%Y-%m-%d %H:%M:%OS6',tz='UTC')
+
+ymd_hms('2013-06-11 10:01:01.001') %>% strftime(format='%Y-%m-%d %H:%M:%OS6',tz='UTC')
+
+#as.numeric does not retain any differences in milliseconds
+as.POSIXct('2013-06-11 10:01:01.001',tz='UTC') %>% as.numeric()
+as.POSIXct('2013-06-11 10:01:01.002',tz='UTC') %>% as.numeric()
+
+#See this discussion
+#https://stackoverflow.com/questions/15383057/accurately-converting-from-character-posixct-character-with-sub-millisecond-da
+
+#The floating point 
+as.POSIXct('2013-06-11 10:01:01.001',tz='UTC') %>% as.numeric %>% print(digits=20) #smaller
+as.POSIXct('2013-06-11 10:01:01.000999',tz='UTC') %>% as.numeric %>% print(digits=20) #smaller
+as.POSIXct('2013-06-11 10:01:01.000009',tz='UTC') %>% as.numeric %>% print(digits=20) #larger!
+
+#!!!!!!!! REMOVE !!!!!!!!!!!!!!!
+evtnodup %>% filter(event_id %in% c(194500753,194510657)) %>% View
+

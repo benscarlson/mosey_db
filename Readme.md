@@ -187,8 +187,19 @@ $MOVEDB_SRC/db/load_studies.sh
 You can specify a different directory to hold the raw and clean csvs (e.g. an external disk)
 
 ```bash
-csvdir=/Volumes/WD4TB/projects/myproj/analysis/movedb/csvs
+csvdir=/ExternalDrive/projects/myproj/analysis/movedb/csvs
+
 $MOVEDB_SRC/db/load_studies.sh $csvdir
 ```
+
+You can also specify a different directory to hold the database
+
+```bash
+csvdir=/ExternalDrive/projects/myproj/analysis/movedb/data/csvs
+db=/ExternalDrive/projects/myproj/analysis/movedb/data/move.db
+
+$MOVEDB_SRC/db/load_studies.sh $csvdir --db $db
+```
+
 
 TOOD: seperate examples using get, clean, load, validate scripts.
