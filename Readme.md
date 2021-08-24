@@ -1,9 +1,8 @@
 # Getting started
 
+## Using mosey_db
 
-## Using movedb
-
-This section assumes you have a movedb sqlite file. See below if you want to create and populate a new database.
+This section assumes you have a mosey.db sqlite file. See below if you want to create and populate a new database.
 
 ```r
 library(DBI)
@@ -11,7 +10,7 @@ library(dplyr)
 library(RSQLite)
 
 .wd <- '~/projects/mycoolproject/analysis'
-.dbPF <- file.path(.wd,'data/move.db')
+.dbPF <- file.path(.wd,'data/mosey.db')
 
 db <- DBI::dbConnect(RSQLite::SQLite(), .dbPF)
 
@@ -144,11 +143,11 @@ evttb %>%
 
 See wf_create_db.sh for example script.
 
-Set up the environment. Set `MOVEDB_SRC` to the location of the movedb source code
+Set up the environment. Set `MOSEYDB_SRC` to the location of the mosey_db source code
 
 ```bash
-wd=~/projects/myproj/analysis/movedb
-export MOVEDB_SRC=~/projects/movedb/src
+wd=~/projects/myproj/analysis/mosey_db
+export MOSEYDB_SRC=~/projects/mosey_db/src
 
 cd $wd
 
@@ -158,14 +157,14 @@ mkdir -p data
 Create the database
 
 ```bash
-cat $MOVEDB_SRC/db/create_db.sql | sqlite3 data/move.db
+cat $MOSEYDB_SRC/db/create_db.sql | sqlite3 data/mosey.db
 ```
 
 You can already view the database, even without any data. One great option is to use [db browser](https://sqlitebrowser.org/)
 
 ### Populate the database
 
-The movedb scripts will download data from movebank, then clean and load the data into the database. 
+The mosey_db scripts will download data from movebank, then clean and load the data into the database. 
 
 #### Auth file
 In order to access movebank, make a file called `auth.yml` and put it into the working directory. Add your movebank credentials to this file. See `examples/auth.yml` for an example.
@@ -179,27 +178,33 @@ You specify which studies to download by creating a file in ctfs/study.csv. See 
 Run the load studies script to download, clean, and import data.
 
 ```bash
-$MOVEDB_SRC/db/load_studies.sh
+$MOSEYDB_SRC/db/load_studies.sh
 ```
 
- The raw data is downloaded into the `./<study_id>/raw` directory. After it is cleaned the data is saved into the `./<study_id>/clean` directory. Movedb then loads the clean data into the database.
+ The raw data is downloaded into the `./<study_id>/raw` directory. After it is cleaned the data is saved into the `./<study_id>/clean` directory. mosey_db then loads the clean data into the database.
 
 You can specify a different directory to hold the raw and clean csvs (e.g. an external disk)
 
 ```bash
-csvdir=/ExternalDrive/projects/myproj/analysis/movedb/csvs
+csvdir=/ExternalDrive/projects/myproj/analysis/mosey_db/csvs
 
-$MOVEDB_SRC/db/load_studies.sh $csvdir
+$MOSEYDB_SRC/db/load_studies.sh --csvdir $csvdir
 ```
 
 You can also specify a different directory to hold the database
 
 ```bash
-csvdir=/ExternalDrive/projects/myproj/analysis/movedb/data/csvs
-db=/ExternalDrive/projects/myproj/analysis/movedb/data/move.db
+db=/ExternalDrive/projects/myproj/analysis/mosey_db/data/mosey.db
 
-$MOVEDB_SRC/db/load_studies.sh $csvdir --db $db
+$MOSEYDB_SRC/db/load_studies.sh --db $db
 ```
 
+You can specify which of the subprocesses to run. To specify which subprocesses to run, use the `process` parameter with the string 'dclv' (d=download, c=clean, l=load, v=validate).
 
-TOOD: seperate examples using get, clean, load, validate scripts.
+For example, you might have already downloaded the data so you just need to clean, load and validate. In this case do the following.
+
+```bash
+$MOSEYDB_SRC/db/load_studies.sh --process clv
+```
+
+TOOD: seperate examples using download, clean, load, validate scripts.
