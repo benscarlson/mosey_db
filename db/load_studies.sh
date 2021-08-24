@@ -2,12 +2,13 @@
 # Usage: load_datasets.sh #syntax to run without any parameters
 
 eval "$(docopts -h - : "$@" <<EOF
-Usage: load_datasets.sh [options] <argv>...
+Usage: load_datasets.sh [options] ...
 
 Options:
       --help     Show help options.
       --version  Print program version.
-      --db=<db>  Path to database. Default is data/move.db
+      --csvdir=<csvdir> Path to store raw and clean csv directories
+      --db=<db>  Path to database. Default is data/mosey.db
       --process=<process> Character string specifying which steps to process. Defaults to dciv. (download, clean, import, validate)
 ----
 load_datasets 0.1
@@ -29,13 +30,10 @@ EOF
 #See here for details: https://github.com/docopt/docopts
 #TODO: Also I might need to do raw/<id>/*.csv instead of <id>/raw/*.csv
 #  Otherwise I can't pass in raw and clean folders seperately.
-#  For now, just passing in parent csvdir. Later, need to pass in raw, clean, db 
-#   as optional parameters
+#  For now, just passing in parent csvdir.
 
-csvdir=${argv[0]}
-#raw=${argv[0]}
-#clean=${argv[0]}
-#db=${argv[1]}
+[[ -z "$csvdir" ]] && csvdir=.
+[[ -z "$db" ]] && db=data/mosey.db
 [[ -z "$process" ]] && process=dciv
 
 #-----------------------#
@@ -73,7 +71,7 @@ do
   
   if [[ "$process" = *d* ]]; then
     echo "Downloading study ${studyId}"
-    $MOVEDB_SRC/db/get_study.r $studyId -r $raw -t 2>&1 | tee logs/$studyId.log
+    $MOSEYDB_SRC/db/get_study.r $studyId -r $raw -t 2>&1 | tee logs/$studyId.log
     exitcode=("${PIPESTATUS[@]}")
 
     #See here for info on how to store: https://www.mydbaworld.com/retrieve-return-code-all-commands-pipeline-pipestatus/
@@ -94,7 +92,7 @@ do
   #---------------#
   if [[ "$process" = *c* ]]; then
     echo "Cleaning study ${studyId}"
-    $MOVEDB_SRC/db/clean_study.r ${studyId} -c $clean -r $raw -t 2>&1 | tee -a logs/$studyId.log
+    $MOSEYDB_SRC/db/clean_study.r ${studyId} -c $clean -r $raw -t 2>&1 | tee -a logs/$studyId.log
     exitcode=("${PIPESTATUS[@]}")
   
     if [ ${exitcode[0]} -eq 0 ]; then
@@ -117,7 +115,7 @@ do
     [[ ! -z "$db" ]] && params+=("-d $db")
   
     echo "Importing study ${studyId}"
-    $MOVEDB_SRC/db/import_study.r -i ${studyId} -c $clean "${params[@]}" -t 2>&1 | tee -a logs/$studyId.log
+    $MOSEYDB_SRC/db/import_study.r -i ${studyId} -c $clean "${params[@]}" -t 2>&1 | tee -a logs/$studyId.log
   
     exitcode=("${PIPESTATUS[@]}")
   
@@ -140,7 +138,7 @@ do
     params=()
     [[ ! -z "$db" ]] && params+=("-d $db")
     
-    $MOVEDB_SRC/db/validate_import.r ${studyId} -c $clean "${params[@]}" -t 2>&1 | tee -a logs/$studyId.log
+    $MOSEYDB_SRC/db/validate_import.r ${studyId} -c $clean "${params[@]}" -t 2>&1 | tee -a logs/$studyId.log
   
     exitcode=("${PIPESTATUS[@]}")
     

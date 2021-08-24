@@ -12,7 +12,7 @@ Options:
 -v --version     Show version.
 -i --studyid=<studyid>  The study id of the data to load. If passed in, data comes from <wd>/data/<studyid>/clean
 -c --clean=<clean>  Directory containing the clean csv files. If not passed in, need to suppy studyid.
--d --db=<db> Data in the <clean> directory will be imported into the database at <db>. Defaults to <wd>/data/move.db
+-d --db=<db> Data in the <clean> directory will be imported into the database at <db>. Defaults to <wd>/data/mosey.db
 -s --seed=<seed>  Random seed. Defaults to 5326 if not passed
 -t --test         Indicates script is a test run, will not save output parameters or commit to git
 -b --rollback   Rollback the transaction before exiting the script.
@@ -35,7 +35,7 @@ if(interactive()) {
   rd <- here
   
   .studyid <- 631036041
-  .dbPF <- file.path(.wd,'data/move.db')
+  .dbPF <- file.path(.wd,'data/mosey.db')
   .cleanP <- .outP <- file.path(.wd,'data',.studyid,'clean')
 } else {
   suppressPackageStartupMessages({
@@ -56,7 +56,7 @@ if(interactive()) {
   .studyid <- as.integer(ag$studyid)
 
   if(length(ag$db)==0) {
-    .dbPF <- file.path(.wd,'data','move.db')
+    .dbPF <- file.path(.wd,'data','mosey.db')
   } else {
     .dbPF <- trimws(ag$db)
   }
