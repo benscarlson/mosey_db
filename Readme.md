@@ -199,12 +199,12 @@ db=/ExternalDrive/projects/myproj/analysis/mosey_db/data/mosey.db
 $MOSEYDB_SRC/db/load_studies.sh --db $db
 ```
 
-You can specify which of the subprocesses to run. To specify which subprocesses to run, use the `process` parameter with the string 'dclv' (d=download, c=clean, l=load, v=validate).
+You can specify which of the subprocesses to run. To specify which subprocesses to run, use the `process` parameter with the string 'dciv' (d=download, c=clean, i=import, v=validate).
 
-For example, you might have already downloaded the data so you just need to clean, load and validate. In this case do the following.
+For example, you might have already downloaded the data so you just need to clean, import and validate. In this case do the following.
 
 ```bash
-$MOSEYDB_SRC/db/load_studies.sh --process clv
+$MOSEYDB_SRC/db/load_studies.sh --process civ
 ```
 
-TOOD: seperate examples using download, clean, load, validate scripts.
+TOOD: examples using seperate download, clean, import, validate scripts.
