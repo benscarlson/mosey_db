@@ -24,19 +24,14 @@ Options:
 if(interactive()) {
   library(here)
   
-  .wd <- '~/projects/movedb/analysis/test_get_clean'
+  .wd <- '~/projects/mosey_db_test/analysis/test1'
   .seed <- NULL
   .test <- TRUE
   rd <- here
 
-  #.studyid <- 9648615
-  .studyid <- 8008992
+  .studyid <- 10449318
 
-  # .rawP <- file.path(.wd,'data',.studyid,'raw')
-  # .cleanP <- file.path(.wd,'data',.studyid,'clean')
-  
-  #csvdir <- '/Volumes/WD4TB/projects/ms3/analysis/full_workflow_poc/data/'
-  csvdir <- '/Volumes/WD4TB/projects/1000cranes/data'
+  csvdir <- file.path(.wd,'data/csvs')
   
   .rawP <- file.path(csvdir,.studyid,'raw')
   .cleanP <- file.path(csvdir,.studyid,'clean')
@@ -90,7 +85,6 @@ list.files(rd('src/funs/auto'),full.names=TRUE) %>%
 source(rd('src/funs/mbts.r'))
 
 #This sets the movebank output format for timestamps for write_csv
-#TODO: make sure this works correctly
 output_column.POSIXct <- mbts
 
 dir.create(.cleanP,showWarnings=FALSE,recursive=TRUE)
@@ -98,12 +92,12 @@ dir.create(.cleanP,showWarnings=FALSE,recursive=TRUE)
 invisible(assert_that(dir.exists(.cleanP)))
 
 message(glue('Cleaning data for study {.studyid}'))
-
+message(glue('Loading raw data from {.rawP}'))
 #---- Load data ----#
-sensTypes <- read_csv(rd('src/sensor_type.csv'),col_types=cols()) %>% #lookup table for tag types
+sensTypes <- read_csv(rd('src/sensor_type.csv')) %>% #lookup table for tag types
   rename(sensor_type_id=id)
 
-fields <- read_csv(rd('src/fields.csv'),col_types=cols())
+fields <- read_csv(rd('src/fields.csv'))
 
 #---------------#
 #---- study ----#
@@ -111,7 +105,7 @@ fields <- read_csv(rd('src/fields.csv'),col_types=cols())
 stdFields <- fields %>% 
   filter(table=='study' & !is.na(name_raw)) 
 
-std <- read_csv(file.path(.rawP,'study.csv'),col_types=cols()) %>%
+std <- read_csv(file.path(.rawP,'study.csv')) %>%
   rename(!!!setNames(stdFields$name_raw,stdFields$name_clean))
 
 #--------------------#
@@ -142,7 +136,7 @@ if(nrow(ind00)-nrow(ind0) > 0) {
   ind00 %>% 
     filter(str_detect(tolower(taxon_canonical_name),'homo sapien') | 
              is.na(taxon_canonical_name)) %>%
-    select(id,local_identifier,nick_name,taxon_canonical_name) %>%
+    select(individual_id,local_identifier,nick_name,taxon_canonical_name) %>%
     kable
   
 } else {

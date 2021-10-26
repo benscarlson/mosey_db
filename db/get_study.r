@@ -5,6 +5,7 @@
 #       to download data.
 #TODO: since I'm now saving just the raw files, I can save directly to disk using rmoveapi
 #       I'll just need to replace all \r\n with "" because direct save does not do this.
+#TODO: print out the numer of events downloaded. Throw warning if 0 events?
 
 '
 Get and clean all data for a study from movebank api
@@ -30,14 +31,14 @@ isAbsolute <- function(path) {
 if(interactive()) {
   library(here)
   
-  .wd <- '~/projects/movedb/analysis/test'
+  .wd <- '~/projects/mosey_db_test/analysis/test_no_records'
   .seed <- NULL
   .test <- TRUE
   rd <- here
 
-  .studyid <- 2988357
+  .studyid <- 170501269
   .auth <- NULL
-  .rawP <- file.path(.wd,'data',.studyid,'raw')
+  .rawP <- file.path(.wd,'data/csvs',.studyid,'raw')
   
 } else {
   suppressPackageStartupMessages({
@@ -60,7 +61,6 @@ if(interactive()) {
   } else {
     .rawP <- ifelse(isAbsolute(ag$raw),ag$raw,file.path(.wd,ag$raw))
   }
-
 }
 
 #---- Initialize Environment ----#
@@ -110,9 +110,25 @@ dir.create(.rawP,showWarnings=FALSE,recursive=TRUE)
 
 invisible(assert_that(dir.exists(.rawP)))
 
+#---- Local parameters ----#
+# .studyPF <- file.path(.rawP,'study.csv')
+# .individualPF <- file.path(.rawP,'individual.csv')
+# .sensorPF <- file.path(.rawP,'sensor.csv')
+# .tagPF <- file.path(.rawP,'tag.csv')
+# .deploymentPF <- file.path(.rawP,'deployment.csv')
+# .eventPF <- file.path(.rawP,'event.csv')
+
+#Make csv paths and convert to list for convenience
+csvPF <- tibble(
+  FN=c('study','individual','sensor','tag','deployment','event')) %>%
+  mutate(PF=file.path(.rawP,glue('{FN}.csv'))) %>%
+  deframe %>% as.list
+
+dfs <- list() #Holds references to entity dataframes
+
 #---- Load data ----#
 
-fields <- read_csv(rd('src/fields.csv'),col_types=cols())
+fields <- read_csv(rd('src/fields.csv'))
 
 message(glue('Downloading data for study {.studyid} from movebank'))
 
@@ -123,12 +139,11 @@ message('Getting study data')
 
 attributes <- fields %>% filter(table=='study' & !is.na(name_raw)) %>% pull('name_raw')
 
-std <- getStudy(.studyid,params=list(attributes=attributes)) #%>% 
-  #rename(study_id=id,study_name=name) 
+dfs$study <- getStudy(.studyid,params=list(attributes=attributes))
 
-message(glue('Study name is: {std$name}'))
-message(glue('Reported num individuals: {std$number_of_individuals}, num events: {format(std$number_of_deployed_locations,big.mark=",")}'))
-#View(t(std))
+message(glue('Study name is: {dfs$study$name}'))
+message(glue('Reported num individuals: {dfs$study$number_of_individuals}, num events: {format(dfs$study$number_of_deployed_locations,big.mark=",")}'))
+
 
 #--------------------#
 #---- individual ----#
@@ -137,10 +152,7 @@ message('Getting individual data')
 
 attributes <- fields %>% filter(table=='individual' & !is.na(name_raw)) %>% pull('name_raw')
 
-ind <- getIndividual(.studyid,params=list(attributes=attributes),accept_license=TRUE) #%>% 
-  #rename(individual_id=id) 
-
-#View(ind)
+dfs$individual <- getIndividual(.studyid,params=list(attributes=attributes),accept_license=TRUE)
 
 #----------------#
 #---- sensor ----#
@@ -149,9 +161,7 @@ message('Getting sensor data')
 
 attributes <- fields %>% filter(table=='sensor' & !is.na(name_raw)) %>% pull('name_raw')
 
-sens <- getSensor(.studyid,params=list(attributes=attributes)) #%>% 
-  #rename(sensor_id=id)
-#View(sens)
+dfs$sensor <- getSensor(.studyid,params=list(attributes=attributes))
 
 #----------------#
 #---- tag ----#
@@ -160,10 +170,7 @@ message('Getting tag data')
 
 attributes <- fields %>% filter(table=='tag' & !is.na(name_raw)) %>% pull('name_raw')
 
-tag <- getTag(.studyid,params=list(attributes=attributes)) #%>% 
-  #rename(tag_id=id)
-
-#View(tag)
+dfs$tag <- getTag(.studyid,params=list(attributes=attributes))
 
 #--------------------#
 #---- deployment ----#
@@ -172,35 +179,51 @@ message('Getting deployment data')
 
 attributes <- fields %>% filter(table=='deployment' & !is.na(name_raw)) %>% pull('name_raw')
 
-dep <- getDeployment(.studyid,params=list(attributes=attributes)) #%>% 
-  #rename(deployment_id=id)
-#View(dep)
+dfs$deployment <- getDeployment(.studyid,params=list(attributes=attributes))
 
 #---------------#
 #---- event ----#
 #---------------#
 
 message('Getting GPS (653) event data. This can take awhile...')
+message(glue('Saving event data to csv file in {csvPF$event}'))
 
 attributes <- fields %>% filter(table=='event' & !is.na(name_raw)) %>% pull('name_raw')
 
 tic()
-status <- getEvent(.studyid,attributes,sensor_type_id=653,save_as=file.path(.rawP,'event.csv'))
+status <- getEvent(.studyid,attributes,sensor_type_id=653,save_as=csvPF$event)
 toc()
 
-invisible(assert_that(status))
+invisible(assert_that(status)) #Should be TRUE if events were downloaded successfully
+
+#---------------------------------------------------#
+#---- Warn if there are entities with 0 records ----#
+#---------------------------------------------------#
+
+rcount <- dfs %>% map(~{nrow(.x)})
+
+#Get row count from event because that was downloaded directly to disk
+#Subtract 1 becuase the header row is counted
+rcount$event <- paste0("wc -l ", csvPF$event) %>% system(intern=T) %>% trimws %>% strsplit(" ") %>% 
+  unlist %>% .[1] %>% as.integer %>% `-`(1)
+
+#.[1] is the same as `[`(1)
+# can also do e.g. .['event'] if it is a list
+
+as_tibble(rcount) %>% gather(key='entity',value='num') %>% 
+  filter(num <= 0) %>%
+  pull(entity) %>% 
+  walk(~warning(glue('Entity "{.x}" has 0 records'),call.=FALSE))
 
 #------------------------------------#
 #---- Write out raw data to csvs ----#
 #------------------------------------#
 
-message('Saving data to csv files')
+message(glue('Saving data to csv files in {.rawP}'))
 
-#Event data was saved directly to disk
-write_csv(std,file.path(.rawP,'study.csv'),na="")
-write_csv(ind,file.path(.rawP,'individual.csv'),na="")
-write_csv(sens,file.path(.rawP,'sensor.csv'),na="")
-write_csv(tag,file.path(.rawP,'tag.csv'),na="")
-write_csv(dep,file.path(.rawP,'deployment.csv'),na="")
+#Write other entities to disk. Event data was saved directly to disk so don't write that.
+csvPF %>% 
+  list_modify('event'=NULL) %>% 
+  iwalk(~write_csv(dfs[.y][[1]],.x,na=""))
 
 message(glue('Script complete in {diffmin(t0)} minutes'))

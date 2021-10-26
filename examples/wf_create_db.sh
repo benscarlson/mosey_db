@@ -1,10 +1,12 @@
 #Example workflow script that creates a database
 
-pd=~/projects/mycoolproject/analysis/movebankdb
+wd=~/projects/mycoolproject/analysis
 
-src=~/projects/movebankdb/src
+MOSEYDB_SRC=~/projects/mosey_db/src
 
-cd $pd
+cd $wd
+
+mkdir -p data
 
 #-------------------------#
 #---- Create database ----#
@@ -13,4 +15,4 @@ cd $pd
 # Don't run this if database already exists!
 # Below is commented out to prevent accidental execution
 
-# cat $src/db/create_db.sql | sqlite3 data/movebank.db
+# cat $MOSEYDB_SRC/db/create_db.sql | sqlite3 data/mosey.db

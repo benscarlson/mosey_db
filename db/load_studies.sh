@@ -21,6 +21,7 @@ EOF
 # Interface might be to have an optional 'process' flag where you send in the string dciv (download, clean, import, validate)
 # which says which processes to run so to skip download, you send in --process civ. if not passed in, default to dciv
 #TODO: make csvdir optional, just like db
+#TODO: throw an error somewhere if I can't download any events. This can occur if I don't have access to the data.
 
 #----
 #---- Set up variables
@@ -99,7 +100,7 @@ do
       echo "Successfully cleaned study"
       echo $studyId,clean,success >> $status
     else
-      echo "Failed to download data for study ${studyId}"
+      echo "Failed to clean study ${studyId}"
       echo $studyId,clean,fail >> $status
       continue
     fi

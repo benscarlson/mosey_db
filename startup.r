@@ -16,7 +16,7 @@ suppressPackageStartupMessages({
   library(uuid)
 }))
 
-
+options(readr.show_col_types = FALSE)
 
 # Several common packages have conflicts with dplyr filter() and select()
 conflict_prefer('filter','dplyr',quiet=TRUE)
