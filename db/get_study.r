@@ -31,7 +31,7 @@ isAbsolute <- function(path) {
 if(interactive()) {
   library(here)
   
-  .wd <- '~/projects/mosey_db_test/analysis/test_no_records'
+  .wd <- '~/projects/mosey_db_test/analysis/error_dup_tag_id'
   .seed <- NULL
   .test <- TRUE
   rd <- here
@@ -111,12 +111,6 @@ dir.create(.rawP,showWarnings=FALSE,recursive=TRUE)
 invisible(assert_that(dir.exists(.rawP)))
 
 #---- Local parameters ----#
-# .studyPF <- file.path(.rawP,'study.csv')
-# .individualPF <- file.path(.rawP,'individual.csv')
-# .sensorPF <- file.path(.rawP,'sensor.csv')
-# .tagPF <- file.path(.rawP,'tag.csv')
-# .deploymentPF <- file.path(.rawP,'deployment.csv')
-# .eventPF <- file.path(.rawP,'event.csv')
 
 #Make csv paths and convert to list for convenience
 csvPF <- tibble(
@@ -204,11 +198,10 @@ rcount <- dfs %>% map(~{nrow(.x)})
 
 #Get row count from event because that was downloaded directly to disk
 #Subtract 1 becuase the header row is counted
-rcount$event <- paste0("wc -l ", csvPF$event) %>% system(intern=T) %>% trimws %>% strsplit(" ") %>% 
-  unlist %>% .[1] %>% as.integer %>% `-`(1)
+#TODO: make a function countlinesf() for this common bit of code
 
-#.[1] is the same as `[`(1)
-# can also do e.g. .['event'] if it is a list
+rcount$event <- glue('wc -l < "{path.expand(csvPF$event)}"') %>% 
+  system(intern=T) %>% trimws %>% as.integer - 1
 
 as_tibble(rcount) %>% gather(key='entity',value='num') %>% 
   filter(num <= 0) %>%

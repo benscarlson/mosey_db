@@ -2,6 +2,7 @@
 
 #TODO: can make studyid optional. It is only used if raw and out folders are not specified
 #TODO: now that I'm requesting all entities in a standard way I could use a function
+#TODO: populate event table with study_id
 
 '
 Clean all data for a study. Assumes data is available as csv files, formatted according to the output
@@ -90,6 +91,20 @@ output_column.POSIXct <- mbts
 dir.create(.cleanP,showWarnings=FALSE,recursive=TRUE)
 
 invisible(assert_that(dir.exists(.cleanP)))
+
+#---- Count records for each entity. Fail if there are any with <= zero records
+#TODO: make a countlines() function that counts lines given a filename, use this in get_study.r as well
+norecs <- tibble(entity=c('study','individual','sensor','tag','deployment','event')) %>%
+  mutate(num=map_int(entity,~{
+    x <- file.path(.rawP,glue('{.x}.csv')) %>% path.expand
+    glue('wc -l < "{x}"') %>% system(intern=T) %>% trimws %>% 
+      as.integer - 1 %>% as.integer
+  })) %>%
+  filter(num <= 0) %>%
+  pull(entity) %>% sort
+
+invisible(assert_that(length(norecs)==0,
+  msg=glue('The following entities had no records: {paste(norecs,collapse=", ")}. Exiting.')))
 
 message(glue('Cleaning data for study {.studyid}'))
 message(glue('Loading raw data from {.rawP}'))
@@ -292,6 +307,8 @@ evt <- evt0 %>%
   filter(is.na(visible) | visible==TRUE) %>% #I think visible should always be true
   filter(!is.na(lon) & !is.na(lat)) %>% 
   filter(lon!=0 & lat!=0) %>% 
+  filter(lon >= -180 & lon <= 180) %>%
+  filter(lat >= -90 & lat <= 90) %>%
   filter(!is.na(timestamp)) %>% 
   filter(timestamp!=0) %>% 
   filter(timestamp < Sys.time()) %>% #note this date should be based on the downloaded date

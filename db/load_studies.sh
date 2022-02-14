@@ -1,5 +1,7 @@
 #
-# Usage: load_datasets.sh #syntax to run without any parameters
+# Usage: load_studiessh #syntax to run without any parameters
+
+
 
 eval "$(docopts -h - : "$@" <<EOF
 Usage: load_datasets.sh [options] ...
@@ -17,11 +19,9 @@ EOF
 )"
 
 #TODO: Need to echo to the log file as well as stdout. Maybe use tee as well?
-#TODO: should have a way to selectively process certain steps. E.g., don't run download since we've already downloaded the data.
-# Interface might be to have an optional 'process' flag where you send in the string dciv (download, clean, import, validate)
-# which says which processes to run so to skip download, you send in --process civ. if not passed in, default to dciv
 #TODO: make csvdir optional, just like db
-#TODO: throw an error somewhere if I can't download any events. This can occur if I don't have access to the data.
+#TODO: should be able to pass in valid species, per study. This could be part of the 'clean' process
+#       this will remove any invalid species. Still remove humans by default though.
 
 #----
 #---- Set up variables
@@ -49,6 +49,8 @@ EOF
 # Use miller to filter by run column and then take the study_id field
 # need to use tail to remove first line, which is the header
 studyIds=($(mlr --csv --opprint filter '$run == 1' then cut -f study_id ctfs/study.csv | tail -n +2))
+
+echo Loading ${#studyIds[@]} studies.
 
 status=load_status.csv
 
@@ -153,6 +155,8 @@ do
     fi
   fi
 done
+
+echo Script Complete
 
 #TODO
 # Run analyze statement (or pgrama optimize?) on database

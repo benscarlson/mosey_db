@@ -93,6 +93,7 @@ CREATE TABLE IF NOT EXISTS `deployment` (
 
 CREATE TABLE IF NOT EXISTS `event` (
 	`event_id`	INTEGER PRIMARY KEY,
+	`study_id` INTEGER,
 	`individual_id`	INTEGER,
 	`lon`	REAL,
 	`lat`	REAL,
@@ -109,31 +110,26 @@ CREATE TABLE IF NOT EXISTS `event` (
   `time_to_fix` REAL,
   `fix_type` INTEGER,
 	FOREIGN KEY(tag_id) REFERENCES tag(tag_id),
+	FOREIGN KEY(study_id) REFERENCES study(study_id),
 	FOREIGN KEY(individual_id) REFERENCES individual(individual_id)
 ) WITHOUT ROWID;
 
----- 
----- Extension tables 
-----
 
-CREATE TABLE IF NOT EXISTS `event_indiv_stats` (
-	`individual_id`	INTEGER,
-	`ts_min` TEXT,
-	`ts_max` TEXT,
-	`lon_min` REAL,
-	`lon_max` REAL,
-	`lon_mean` REAL,
-	`lat_min` REAL,
-	`lat_max` REAL,
-	`lat_mean` REAL,
-	FOREIGN KEY(individual_id) REFERENCES individual(individual_id)
-);
 ---- Create Indices
 
+-- event table
+--TODO: revisit these indices. sqlite will only use the first columns in the index
+-- and will not use an index if the query does not use the first column
 create index idx_event_timestamp on event (timestamp);
-
 create index idx_event_individual_id on event (individual_id);
+--TODO: I probably don't use the index below
+-- maybe just have an index for event_id, to speed up joins
+create index idx_event_full on event (event_id,individual_id,study_id,timestamp);
+create index idx_event_studyid on event (study_id)
 
-create index idx_event_individual_id_timestamp on event (individual_id,timestamp);
+--individual table
+--TODO: I probably don't use both individual_id and study_id together
+-- could split into two indices
+create index idx_individual on individual (individual_id,study_id);
 
 COMMIT;
